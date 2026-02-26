@@ -1,0 +1,15 @@
+sgpt_config.yaml
+sessions/*
+!sessions/session_template.md
+members/*
+!members/member_template.md
+test.py
+rules.md
+venv/
+old_sessions/
+members_ai/andrew_tate.md
+members_ai/jordan_peterson.md
+members_ai/charlie_kirk.md
+members_ai/donald_trump.md
+push.sh
+I_dont_care_about_versioning.sh
