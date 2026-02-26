@@ -82,7 +82,9 @@ cd NAPOLEON_HILLS_AI_MASTERMIND_CLASSES
 python setup.py
 ```
 
-Edit `sgpt_config.yaml` with your API key and model, then:
+Edit `sgpt_config.yaml` with your API key and model. The system runs on **[litellm](https://docs.litellm.ai/)** — all major providers are supported: Anthropic, OpenAI, Google Gemini, xAI (Grok), Groq, and more. Just uncomment your provider's key in the config file and set `DEFAULT_MODEL` to match.
+
+Then:
 
 ```bash
 source venv/bin/activate      # macOS / Linux

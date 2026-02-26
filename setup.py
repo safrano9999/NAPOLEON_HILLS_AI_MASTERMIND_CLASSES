@@ -83,27 +83,27 @@ def create_config():
 
     config_content = """# Napoleon Hill Mastermind - Configuration
 # ─────────────────────────────────────────────
-# Set your API key and model below.
-# Only the key for your chosen provider is required.
+# Uncomment the API key for your chosen provider.
+# Only one key is required. Set DEFAULT_MODEL to match.
 # ─────────────────────────────────────────────
 
-# Anthropic (claude-*)
-ANTHROPIC_API_KEY = YOUR_ANTHROPIC_KEY_HERE
+# Anthropic — claude-sonnet-4-6, claude-opus-4-6, claude-haiku-4-5 ...
+# ANTHROPIC_API_KEY = YOUR_ANTHROPIC_KEY_HERE
 
-# OpenAI (gpt-*)
+# OpenAI — gpt-4o, gpt-4-turbo, o1 ...
 # OPENAI_API_KEY = YOUR_OPENAI_KEY_HERE
 
-# Google Gemini (gemini/*)
+# Google Gemini — gemini/gemini-2.0-flash, gemini/gemini-2.0-pro ...
 # GEMINI_API_KEY = YOUR_GEMINI_KEY_HERE
 
-# Groq (groq/*)
+# xAI (Grok) — xai/grok-2, xai/grok-beta ...
+# XAI_API_KEY = YOUR_XAI_KEY_HERE
+
+# Groq — groq/llama3-70b-8192, groq/mixtral-8x7b ...
 # GROQ_API_KEY = YOUR_GROQ_KEY_HERE
 
-# Model to use (litellm format). Examples:
-#   Anthropic : claude-sonnet-4-6
-#   OpenAI    : gpt-4o
-#   Gemini    : gemini/gemini-flash-latest
-#   Groq      : groq/llama3-70b-8192
+# ─────────────────────────────────────────────
+# Active model (litellm format — must match your uncommented key above)
 DEFAULT_MODEL = claude-sonnet-4-6
 """
     CONFIG_FILE.write_text(config_content)
