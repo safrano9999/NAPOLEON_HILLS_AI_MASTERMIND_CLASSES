@@ -1,7 +1,7 @@
 # 💰 Napoleon Hill's AI Mastermind 🏦
 
 <p align="center">
-  <img src="napoleon_hill.jpg" alt="Napoleon Hill" width="300"/>
+  <img src="napoleon_hill.jpg" alt="Napoleon Hill" width="600"/>
 </p>
 
 **Napoleon Hill** (1883–1970) war einer der einflussreichsten Autoren für persönlichen Erfolg. Sein Meisterwerk **_Think and Grow Rich_** (1937) ist bis heute eines der meistverkauften Bücher aller Zeiten. In **Kapitel 10 — The Mastermind** enthüllte er das größte Erfolgsgeheimnis: Eine Gruppe brillanter Köpfe mit gemeinsamem Ziel erschafft einen unsichtbaren "dritten Verstand", der mächtiger ist als jeder Einzelne.
@@ -12,7 +12,9 @@
 Hills Vermächtnis wird von der **[Napoleon Hill Foundation](https://www.naphill.org/)** bewahrt.
 
 ---
-
+<p align="center">
+  <img src="screen.png" alt="Napoleon Hill" width="600"/>
+</p>
 ## 🚀 Quick Start — 2 Minuten Setup
 
 ```bash
