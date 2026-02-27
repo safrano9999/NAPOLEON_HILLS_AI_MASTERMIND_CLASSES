@@ -181,6 +181,7 @@ Läuft auf **[litellm](https://docs.litellm.ai/)** — alle großen Provider:
 - **Längere Antworten?** → `response_sentences: 6-8`
 - **Anderes Model testen?** → Einfach in Config ändern, wird live übernommen
 - **Mehrere Sessions parallel?** → Leg einfach mehr Files in `sessions/` an
+- **Verschiedene Provider pro Persona?** → in die oberste Zeile der Persona.md model: z.B. claude-sonnet-4-6` anfügen
 
 ---
 
