@@ -4,112 +4,181 @@
   <img src="napoleon_hill.jpg" alt="Napoleon Hill" width="300"/>
 </p>
 
-**Napoleon Hill** (1883–1970) was one of the most influential personal success authors in American history. His masterwork, **_Think and Grow Rich_** (1937), remains one of the best-selling books of all time. In **Chapter 10 — The Mastermind**, Hill revealed what he considered the single greatest secret of success: surrounding yourself with a group of brilliant minds aligned toward a common purpose creates an invisible "third mind" far more powerful than any individual.
+**Napoleon Hill** (1883–1970) war einer der einflussreichsten Autoren für persönlichen Erfolg. Sein Meisterwerk **_Think and Grow Rich_** (1937) ist bis heute eines der meistverkauften Bücher aller Zeiten. In **Kapitel 10 — The Mastermind** enthüllte er das größte Erfolgsgeheimnis: Eine Gruppe brillanter Köpfe mit gemeinsamem Ziel erschafft einen unsichtbaren "dritten Verstand", der mächtiger ist als jeder Einzelne.
 
 > *"Whatever the mind of man can conceive and believe, it can achieve."*
 > — Napoleon Hill
 
-Hill's legacy is preserved by the **[Napoleon Hill Foundation](https://www.naphill.org/)**, a nonprofit dedicated to bringing his philosophy to people around the world.
+Hills Vermächtnis wird von der **[Napoleon Hill Foundation](https://www.naphill.org/)** bewahrt.
 
 ---
 
-## 💵 What This Program Does — A Modern AI Mastermind
+## 🚀 Quick Start — 2 Minuten Setup
 
-The program is written in **Python** and lives entirely in **Markdown files** — no database, no web app. Everything is a `.md` file: members, sessions, personas, conversations.
+```bash
+# 1. Repo klonen
+git clone <repo-url>
+cd NAPOLEON_HILLS_AI_MASTERMIND_CLASSES
 
-### 🏛️ Three Types of Members
+# 2. Setup ausführen (erstellt venv + installiert alles)
+python3 setup.py
 
-Members are organized in three folders:
+# 3. API-Key eintragen
+nano .env   # oder öffne .env in deinem Editor
 
-- **`members_ai/`** — AI personas. Each file defines a character's identity, philosophy, voice, and worldview. When it's their turn, the supervisor reads their `.md` file and calls the LLM to respond in character. Examples:
-  - 🚀 **Elon Musk** — first-principles thinking, moonshot goals, relentless execution
-  - 💎 **John D. Rockefeller** — strategy, discipline, long-term wealth building
-  - ...and many more in `members_ai/`
+# 4. Starten!
+python3 supervisor_loop.py
+```
 
-- **`members/`** — Human participants. A human member writes their response directly into the session file by hand. The supervisor detects it's a human's turn and waits — it will not proceed until the human has written their entry.
+**Optional — Web-Editor starten:**
+```bash
+python3 mastermind_web.py
+# → öffnet http://127.0.0.1:7700
+```
 
-- **`members_agents/`** — Claw agents. These are autonomous agents that read the full session file and know when it is their turn to respond, acting independently within the loop.
+Fertig. Kein venv aktivieren nötig — die Scripts finden es automatisch.
 
-### 📜 Sessions
+---
 
-A session is a single Markdown file in `sessions/`. To start one, create a file with this header:
+## 💵 Was macht das Programm?
+
+Alles läuft in **Markdown-Dateien** — keine Datenbank, kein kompliziertes Setup. Members, Sessions, Personas, Gespräche — alles `.md` Files die du im Browser oder Editor bearbeiten kannst.
+
+### 🏛️ Drei Typen von Members
+
+| Ordner | Typ | Beschreibung |
+|--------|-----|--------------|
+| `members_ai/` | 🤖 AI Personas | Charaktere mit eigener Persönlichkeit. Loop ruft LLM auf. |
+| `members/` | 👤 Menschen | Du schreibst direkt ins Session-File. Loop wartet auf dich. |
+| `members_agents/` | 🦾 Agenten | Autonome Agenten die selbstständig agieren. |
+
+**AI Personas Beispiele:**
+- 🚀 **Elon Musk** — First-Principles, Moonshots, Execution
+- 💎 **John D. Rockefeller** — Strategie, Disziplin, Langzeit-Denken
+- 🏭 **Henry Ford** — Massenproduktion, Effizienz, Arbeiterethik
+- ...und viele mehr in `members_ai/`
+
+### 📜 Sessions starten
+
+Erstelle eine Datei in `sessions/`:
 
 ```markdown
-# Your Session Title
-members: elon_musk, john_rockefeller, your_name
-thesis: What is the core question you want the mastermind to tackle?
+# Meine Business-Idee
+members: elon_musk, john_rockefeller, dein_name
+thesis: Wie baue ich ein Unternehmen das 100 Jahre hält?
 
 speaker: elon_musk
 ```
 
-- `members:` — comma-separated list of participants (must match their `.md` filenames)
-- `thesis:` — the question or challenge the group will address
-- `speaker:` — who speaks first; the loop picks up from the last `speaker:` line
-
-### ⚙️ The Supervisor Loop
-
-Run `python supervisor_loop.py` and the loop does the rest:
-
-1. Scans all session files in `sessions/`
-2. Finds the last `speaker:` line to determine whose turn it is
-3. If it's an AI persona — loads their `.md` file, calls the LLM, and appends the response
-4. If it's a human — pauses and waits for the human to write their entry
-5. Advances to the next member in the list and repeats
-
-The loop sleeps **10 seconds** between cycles by default. You can change this at the top of `supervisor_loop.py`:
-
-```python
-SLEEP_SECONDS = 10   # increase for slower pacing, decrease for faster rounds
-```
-
-The session file grows turn by turn — a living document you can read, annotate, and version-control.
-
-### 🖥️ Your Experience as a Human Participant
-
-Open the session file in a **Markdown editor with live preview** — [Typora](https://typora.io/), [Obsidian](https://obsidian.md/), or VS Code with the Markdown Preview extension. The file refreshes as the AI members write into it, so you watch the conversation unfold in real time.
-
-When it's your turn, the loop pauses and waits. You'll see your name appear as `speaker: your_name` at the bottom of the file. Just write your response directly below it and save. The loop picks it up automatically and the session continues.
-
-**💸 You don't touch the loop. You don't run any commands. You just write.**
+Das war's. Der Loop übernimmt.
 
 ---
 
-## 🚀 Quick Start
+## ⚙️ Konfiguration
+
+### `.env` — API Keys (privat, nicht im Editor sichtbar)
 
 ```bash
-git clone <repo-url>
-cd NAPOLEON_HILLS_AI_MASTERMIND_CLASSES
-python setup.py
+# Einen Key auskommentieren und eintragen:
+ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+# GEMINI_API_KEY=...
 ```
 
-Edit `sgpt_config.yaml` with your API key and model. The system runs on **[litellm](https://docs.litellm.ai/)** — all major providers are supported: Anthropic, OpenAI, Google Gemini, xAI (Grok), Groq, and more. Just uncomment your provider's key in the config file and set `DEFAULT_MODEL` to match.
-
-Then:
-
-```bash
-source venv/bin/activate      # macOS / Linux
-venv\Scripts\activate         # Windows
-
-python supervisor_loop.py
-```
-
----
-
-## 📋 Session File Format
+### `mastermind_config.md` — Einstellungen (im Web-Editor editierbar!)
 
 ```markdown
-# Session Title
-members: henry_ford, andrew_carnegie, your_name
-thesis: How do I build a business that lasts 100 years?
-
-speaker: henry_ford
-[Henry Ford's response here]
-
-speaker: andrew_carnegie
-[Carnegie's response here]
-
-speaker: your_name
+default_model: gemini/gemini-2.0-flash
+response_sentences: 4-5
+sleep_seconds: 0.5
+editor_refresh_ms: 2000
 ```
+
+| Setting | Beschreibung | Beispiele |
+|---------|--------------|-----------|
+| `default_model` | Welches LLM | `gemini/gemini-2.0-flash`, `anthropic/claude-sonnet-4-6`, `openai/gpt-4o` |
+| `response_sentences` | Antwortlänge | `2-3`, `4-5`, `1`, `5-7` |
+| `sleep_seconds` | Pause zwischen Zyklen | `0.5`, `1`, `10` |
+| `editor_refresh_ms` | Browser-Refresh | `1000`, `2000`, `500` |
+
+**Live-Editing:** Änderungen werden sofort übernommen, kein Neustart nötig!
+
+---
+
+## 🖥️ Web-Editor
+
+```bash
+python3 mastermind_web.py
+# → http://127.0.0.1:7700
+```
+
+<p align="center">
+  <img src="editor_screenshot.png" alt="Web Editor" width="600"/>
+</p>
+
+**Features:**
+- 📁 Alle Sessions, Members und Config an einem Ort
+- 🔄 Auto-Refresh — sieh zu wie AI-Antworten reinkommen
+- 📜 Smart-Scroll — bleibt unten wenn du unten bist
+- ⚙️ Config direkt im Browser editieren
+- 💾 Speichern mit `Ctrl+S` / `Cmd+S`
+
+---
+
+## 🎯 Deine Experience als Mensch
+
+1. **Öffne den Web-Editor** oder die Session in deinem Lieblings-Markdown-Editor
+2. **Schau zu** wie die AI-Members diskutieren
+3. **Wenn du dran bist** — schreib einfach unter `speaker: dein_name`
+4. **Speichern** — der Loop macht automatisch weiter
+
+**💸 Du tippst keinen Code. Du schreibst einfach.**
+
+---
+
+## 📁 Projektstruktur
+
+```
+NAPOLEON_HILLS_AI_MASTERMIND_CLASSES/
+├── .env                    # 🔑 API Keys (privat)
+├── mastermind_config.md    # ⚙️ Einstellungen (editierbar)
+├── supervisor_loop.py      # 🔄 Der Haupt-Loop
+├── mastermind_web.py       # 🌐 Web-Editor
+├── setup.py                # 📦 Installation
+├── rules.md                # 📜 Globale Regeln für alle
+├── members_ai/             # 🤖 AI Personas
+│   ├── elon_musk.md
+│   ├── john_rockefeller.md
+│   └── ...
+├── members/                # 👤 Menschen
+│   └── dein_name.md
+├── members_agents/         # 🦾 Agenten
+└── sessions/               # 💬 Gespräche
+    └── meine_session.md
+```
+
+---
+
+## 🔧 Unterstützte LLM Provider
+
+Läuft auf **[litellm](https://docs.litellm.ai/)** — alle großen Provider:
+
+| Provider | Model-Format | Beispiel |
+|----------|--------------|----------|
+| Anthropic | `anthropic/...` | `anthropic/claude-sonnet-4-6` |
+| OpenAI | `openai/...` | `openai/gpt-4o` |
+| Google | `gemini/...` | `gemini/gemini-2.0-flash` |
+| xAI | `xai/...` | `xai/grok-2` |
+| Groq | `groq/...` | `groq/llama3-70b-8192` |
+
+---
+
+## 💡 Tipps
+
+- **Schnellere Runden?** → `sleep_seconds: 0.25`
+- **Längere Antworten?** → `response_sentences: 6-8`
+- **Anderes Model testen?** → Einfach in Config ändern, wird live übernommen
+- **Mehrere Sessions parallel?** → Leg einfach mehr Files in `sessions/` an
 
 ---
 

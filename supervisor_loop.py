@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Napoleon Hill's AI Mastermind - Supervisor Loop
-Rotates through AI members, spawns sgpt for each matching speaker in sessions.
+Rotates through AI members, calls litellm for each matching speaker in sessions.
+Reads configuration from .env (API keys) and mastermind_config.md (settings).
 """
 
 import os
@@ -27,40 +28,81 @@ MEMBERS_HUMAN = BASE_DIR / "members"
 MEMBERS_AGENT = BASE_DIR / "members_agents"
 SESSIONS_DIR  = BASE_DIR / "sessions"
 RULES_FILE    = BASE_DIR / "rules.md"
-CONFIG_FILE   = BASE_DIR / "sgpt_config.yaml"
+ENV_FILE      = BASE_DIR / ".env"
+CONFIG_FILE   = BASE_DIR / "mastermind_config.md"
 
-SLEEP_SECONDS = 10   # sleep between full rotations
 
-# ── Config helpers ───────────────────────────────────────────────────────────
+# ── Config loading ───────────────────────────────────────────────────────────
 
 def load_config() -> dict:
-    """Read DEFAULT_MODEL from sgpt_config.yaml. That's all we need."""
-    cfg = {}
+    """
+    Load mastermind_config.md - parses key: value lines from the markdown.
+    Returns dict with defaults for missing values.
+    """
+    defaults = {
+        "sleep_seconds": 0.5,
+        "default_model": "gemini/gemini-2.0-flash",
+        "response_sentences": "4-5",
+    }
+
     if not CONFIG_FILE.exists():
-        print(f"[ERROR] sgpt_config.yaml not found. Run setup.py first.")
-        sys.exit(1)
+        print(f"[INFO] No mastermind_config.md found, using defaults.")
+        return defaults
+
+    cfg = {}
     for line in CONFIG_FILE.read_text().splitlines():
+        line = line.strip()
+        # Skip empty lines, comments, headers, and markdown formatting
+        if not line or line.startswith("#") or line.startswith("-") or line.startswith("*"):
+            continue
+        if line == "---":
+            continue
+        # Parse key: value lines (but skip URLs like http:)
+        if ":" in line and not line.startswith("http"):
+            k, _, v = line.partition(":")
+            k = k.strip().lower().replace(" ", "_")
+            v = v.strip().strip('"').strip("'")
+            if k in defaults:
+                # Type conversion
+                if v.replace(".", "", 1).isdigit():  # handles int and float
+                    v = float(v) if "." in v else int(v)
+                elif v.lower() in ("true", "false"):
+                    v = v.lower() == "true"
+                cfg[k] = v
+
+    return {**defaults, **cfg}
+
+
+def reload_config():
+    """Reload config from file (called each cycle for live updates)."""
+    global CFG, SLEEP_SECONDS
+    CFG = load_config()
+    SLEEP_SECONDS = CFG.get("sleep_seconds", 10)
+
+
+# Initial load
+CFG = load_config()
+SLEEP_SECONDS = CFG.get("sleep_seconds", 10)
+
+
+# ── Environment loading ──────────────────────────────────────────────────────
+
+def load_env() -> dict:
+    """Load environment variables from .env file (API keys)."""
+    env = {}
+    if not ENV_FILE.exists():
+        print(f"[WARNING] .env not found. Make sure API keys are set in environment.")
+        return env
+    for line in ENV_FILE.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
         if "=" in line:
             k, _, v = line.partition("=")
-            cfg[k.strip()] = v.strip()
-    return cfg
-
-
-def build_sgpt_cmd(cfg: dict) -> list:
-    """Build the sgpt command list from config. Always use system sgpt."""
-    model = cfg.get("DEFAULT_MODEL", "gemini/gemini-flash-latest")
-    return ["sgpt", "--model", model, "--no-md", "--no-cache"]
-
-
-def build_env(cfg: dict) -> dict:
-    """Build environment for sgpt using only the local sgpt_config.yaml."""
-    env = os.environ.copy()
-    for k, v in cfg.items():
-        env[k] = v
-    env["SGPT_CONFIG"] = str(CONFIG_FILE)
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
+            env[k] = v
+            os.environ[k] = v  # set in environment immediately
     return env
 
 
@@ -97,6 +139,22 @@ def read_member_md(name: str) -> str:
         if p.exists():
             return p.read_text()
     return ""
+
+
+def get_member_model(name: str) -> str | None:
+    """
+    Check if member MD has a model: line in the first 3 lines.
+    Returns the model string or None if not specified.
+    """
+    content = read_member_md(name)
+    if not content:
+        return None
+
+    for line in content.splitlines()[:3]:
+        line = line.strip()
+        if line.lower().startswith("model:"):
+            return line.split(":", 1)[1].strip()
+    return None
 
 
 # ── Session parsing ──────────────────────────────────────────────────────────
@@ -206,13 +264,18 @@ def ensure_next_speaker_line(session: dict) -> str:
     return nxt
 
 
-# ── sgpt call ────────────────────────────────────────────────────────────────
+# ── LLM call ─────────────────────────────────────────────────────────────────
 
-def call_sgpt(session: dict, speaker_name: str, cfg: dict) -> str | None:
-    """Build prompt, call sgpt via subprocess, return parsed response text."""
+def call_llm(session: dict, speaker_name: str) -> str | None:
+    """Build prompt, call litellm, return parsed response text."""
+    # Reload config to get latest settings
+    reload_config()
+
     persona_md   = read_member_md(speaker_name)
     rules_text   = RULES_FILE.read_text() if RULES_FILE.exists() else ""
     session_text = session["text"]
+
+    sentences = CFG.get("response_sentences", "4-5")
 
     prompt = f"""You are {speaker_name} in a Napoleon Hill Mastermind session.
 
@@ -232,21 +295,22 @@ Read the full conversation above and respond in character.
 Return ONLY strict JSON with exactly these keys:
 {{
   "speaker": "{speaker_name}",
-  "response": "Your 4-5 sentence response here."
+  "response": "Your {sentences} sentence response here."
 }}
 
 No preamble. No markdown. No explanation. Only the JSON object.
 """
 
-    sgpt_cmd = build_sgpt_cmd(cfg)
-    env = build_env(cfg)
-
-    # set all keys in env so litellm picks the right one
-    for k, v in cfg.items():
-        os.environ[k] = v
-
     import litellm
-    model = cfg.get("DEFAULT_MODEL", "gemini/gemini-flash-latest")
+
+    # Check if persona has a specific model, otherwise use default
+    persona_model = get_member_model(speaker_name)
+    model = persona_model if persona_model else CFG.get("default_model", "gemini/gemini-2.0-flash")
+
+    if persona_model:
+        print(f"  [DEBUG] Using persona model: '{model}'")
+    else:
+        print(f"  [DEBUG] Using default model: '{model}'")
 
     try:
         response = litellm.completion(
@@ -284,7 +348,7 @@ def append_response(session: dict, speaker_name: str, response: str):
 # ── Main loop ────────────────────────────────────────────────────────────────
 
 def run():
-    cfg = load_config()
+    load_env()  # load .env into environment
 
     # startup warnings
     ai_members = get_ai_members()
@@ -298,11 +362,17 @@ def run():
 
     print(f"[INFO] AI members: {ai_members}")
     print(f"[INFO] Human members: {human_members}")
+    print(f"[INFO] Config file: {'found' if CONFIG_FILE.exists() else 'not found (using defaults)'}")
+    print(f"[INFO] Model: {CFG.get('default_model')}")
+    print(f"[INFO] Response sentences: {CFG.get('response_sentences')}")
     print(f"[INFO] Starting mastermind loop. Sleep between cycles: {SLEEP_SECONDS}s\n")
 
     ai_index = 0  # tracks position in ai_members rotation
 
     while True:
+        # Reload config each cycle (allows live editing via web UI)
+        reload_config()
+
         member_actual = ai_members[ai_index]
         print(f"\n{'='*60}")
         print(f"[CYCLE] member_actual: {member_actual}  ({datetime.now().strftime('%H:%M:%S')})")
@@ -322,6 +392,11 @@ def run():
             session = parse_session(session_path)
             if session is None:
                 # hard error already printed inside parse_session
+                continue
+
+            # Check for PAUSE in session
+            if "PAUSE" in session["text"]:
+                print(f"  ⏸️  PAUSE detected — skipping this session.")
                 continue
 
             # validate all members exist — abort this session on error
@@ -346,16 +421,18 @@ def run():
                 continue
 
             # it's our turn!
-            print(f"  🎙️  Spawning sgpt for {member_actual}...")
-            response = call_sgpt(session, member_actual, cfg)
+            print(f"  🎙️  Calling litellm for {member_actual}...")
+            response = call_llm(session, member_actual)
             if response:
                 append_response(session, member_actual, response)
             else:
-                print(f"  [ERROR] No response from sgpt for {member_actual}. Skipping.")
+                print(f"  [ERROR] No response from litellm for {member_actual}. Skipping.")
 
         # advance to next AI member
         ai_index = (ai_index + 1) % len(ai_members)
 
+        # Reload config to get latest sleep_seconds (live editing)
+        reload_config()
         print(f"\n[SLEEP] Sleeping {SLEEP_SECONDS}s before next cycle...")
         time.sleep(SLEEP_SECONDS)
 

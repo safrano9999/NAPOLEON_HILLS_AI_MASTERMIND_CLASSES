@@ -1,0 +1,19 @@
+# Napoleon Hill Mastermind - API Keys
+# ─────────────────────────────────────────────
+# Uncomment and fill in your API key for your chosen provider.
+# ─────────────────────────────────────────────
+
+# Anthropic — claude-sonnet-4-6, claude-opus-4-6, claude-haiku-4-5 ...
+# ANTHROPIC_API_KEY=YOUR_ANTHROPIC_KEY_HERE
+
+# OpenAI — gpt-4o, gpt-4-turbo, o1 ...
+# OPENAI_API_KEY=YOUR_OPENAI_KEY_HERE
+
+# Google Gemini — gemini/gemini-2.0-flash, gemini/gemini-2.0-pro ...
+# GEMINI_API_KEY=YOUR_GEMINI_KEY_HERE
+
+# xAI (Grok) — xai/grok-2, xai/grok-beta ...
+# XAI_API_KEY=YOUR_XAI_KEY_HERE
+
+# Groq — groq/llama3-70b-8192, groq/mixtral-8x7b ...
+# GROQ_API_KEY=YOUR_GROQ_KEY_HERE
