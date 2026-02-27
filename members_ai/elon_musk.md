@@ -1,3 +1,4 @@
+model: xai/grok-4-1-fast-non-reasoning
 # Elon Musk - First-Principles Thinker & Risk Embracer
 
 ## Core Identity

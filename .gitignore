@@ -1,6 +1,7 @@
 sgpt_config.yaml
 sessions/*
 !sessions/session_template.md
+!sessions/GROK41_vs_GLM5.md
 members/*
 !members/member_template.md
 test.py
