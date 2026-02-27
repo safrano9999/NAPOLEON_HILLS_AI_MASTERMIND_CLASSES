@@ -1,5 +1,9 @@
 # 💰 Napoleon Hill's AI Mastermind 🏦
 
+<p align="center">
+  <img src="napoleon_hill.jpg" alt="Napoleon Hill" width="600">
+</p>
+
 **Napoleon Hill** (1883–1970) was one of the most influential authors on personal success. His masterpiece ***Think and Grow Rich*** (1937) remains one of the best-selling books of all time. In **Chapter 10 — The Mastermind**, he revealed the greatest secret to success: A group of brilliant minds with a shared goal creates an invisible "third mind" that is more powerful than any individual.
 
 > *"Whatever the mind of man can conceive and believe, it can achieve."*
@@ -8,6 +12,10 @@
 Hill's legacy is preserved by the **[Napoleon Hill Foundation](https://www.naphill.org/)**.
 
 ---
+
+<p align="center">
+  <img src="screen.png" alt="Screenshot" width="600">
+</p>
 
 ## 🚀 Quick Start — 2-Minute Setup
 
@@ -109,6 +117,10 @@ editor_refresh_ms: 2000
 python3 mastermind_web.py
 # → http://127.0.0.1:7700
 ```
+
+<p align="center">
+  <img src="editor_screenshot.png" alt="Web Editor" width="600">
+</p>
 
 **Features:**
 
