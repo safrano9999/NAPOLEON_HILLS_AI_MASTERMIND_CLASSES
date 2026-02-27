@@ -266,6 +266,11 @@ def ensure_next_speaker_line(session: dict) -> str:
 
 # ── LLM call ─────────────────────────────────────────────────────────────────
 
+def is_kilocode_model(model: str) -> bool:
+    """Check if model is a Kilocode model (starts with kilocode/)."""
+    return model.startswith("kilocode/")
+
+
 def call_llm(session: dict, speaker_name: str) -> str | None:
     """Build prompt, call litellm, return parsed response text."""
     # Reload config to get latest settings
@@ -277,7 +282,9 @@ def call_llm(session: dict, speaker_name: str) -> str | None:
 
     sentences = CFG.get("response_sentences", "4-5")
 
-    prompt = f"""You are {speaker_name} in a Napoleon Hill Mastermind session.
+    prompt = f"""CRITICAL INSTRUCTION: You MUST respond with VALID JSON ONLY. No other text is allowed.
+
+You are {speaker_name} in a Napoleon Hill Mastermind session.
 
 === YOUR PERSONA ===
 {persona_md}
@@ -292,13 +299,24 @@ def call_llm(session: dict, speaker_name: str) -> str | None:
 It is now your turn to speak as {speaker_name}.
 Read the full conversation above and respond in character.
 
-Return ONLY strict JSON with exactly these keys:
+IMPORTANT FORMAT REQUIREMENTS:
+1. Your response MUST be VALID JSON
+2. NO text before the JSON
+3. NO text after the JSON
+4. NO markdown code blocks (no ```)
+5. NO explanation or commentary
+6. ONLY the JSON object
+
+REQUIRED JSON FORMAT (copy this structure exactly):
 {{
   "speaker": "{speaker_name}",
   "response": "Your {sentences} sentence response here."
 }}
 
-No preamble. No markdown. No explanation. Only the JSON object.
+EXAMPLE VALID RESPONSE:
+{{"speaker": "{speaker_name}", "response": "This is my response as {speaker_name}. I stay in character. Here is another sentence. And one more to complete my thought."}}
+
+NOW OUTPUT YOUR RESPONSE AS VALID JSON ONLY:
 """
 
     import litellm
@@ -313,11 +331,23 @@ No preamble. No markdown. No explanation. Only the JSON object.
         print(f"  [DEBUG] Using default model: '{model}'")
 
     try:
-        response = litellm.completion(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            stream=False,
-        )
+        # Kilocode-Support: use custom api_base and api_key
+        if is_kilocode_model(model):
+            model_name = model.replace("kilocode/", "")
+            response = litellm.completion(
+                model=f"openai/{model_name}",
+                api_base="https://api.kilo.ai/api/gateway/",
+                api_key=os.environ.get("KILOCODE_API_KEY"),
+                messages=[{"role": "user", "content": prompt}],
+                stream=False,
+            )
+        else:
+            # Normal litellm flow for other providers
+            response = litellm.completion(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                stream=False,
+            )
         raw = response.choices[0].message.content.strip()
         raw = re.sub(r"^```json\s*", "", raw)
         raw = re.sub(r"^```\s*",     "", raw)

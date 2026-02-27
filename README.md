@@ -89,6 +89,7 @@ That's it. The loop takes over.
 # Uncomment and enter one key:
 ANTHROPIC_API_KEY=sk-ant-...
 # GEMINI_API_KEY=...
+# KILOCODE_API_KEY=sk-...
 ```
 
 ### `mastermind_config.md` — Settings (editable in the Web Editor!)
@@ -176,6 +177,7 @@ Runs on **[litellm](https://docs.litellm.ai/)** — all major providers and loca
 | Ollama | `ollama/...` | `ollama/gpt-oss:20b` |
 | Google | `gemini/...` | `gemini/gemini-flash-latest` |
 | xAI | `xai/...` | `xai/grok-4-1-fast-non-reasoning` |
+| Kilocode | `kilocode/...` | `kilocode/z-ai/glm-5` |
 | OpenAI | `openai/...` | `openai/gpt-4o` |
 
 ---
