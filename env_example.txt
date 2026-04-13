@@ -1,0 +1,11 @@
+# Option 1: OpenAI-compatible HTTP endpoint
+# OPENAI_API_BASE=http://litellm:4000/v1
+# OPENAI_API_KEY=your_litellm_bearer_token
+# NAPOLEON_PORT=7700
+
+# Option 2: no OPENAI_API_BASE
+# Use local litellm from pip/venv with provider API keys below.
+OLLAMA_API_BASE=ollama
+# GEMINI_API_KEY=YOUR_GEMINI_KEY_HERE
+# XAI_API_KEY=YOUR_XAI_KEY_HERE
+# KILOCODE_API_KEY=YOUR_KILOCODE_KEY_HERE
