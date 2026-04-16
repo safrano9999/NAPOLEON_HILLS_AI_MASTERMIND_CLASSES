@@ -2,7 +2,7 @@ schema_version = 1
 
 [[runtime.programs]]
 name = "mastermind-web"
-command = "python3 setup.py && python3 mastermind_web.py"
+command = "python3 functions/setup.py && python3 webui.py"
 directory = "/opt/NAPOLEON_HILLS_AI_MASTERMIND_CLASSES"
 autostart = true
 autorestart = true
@@ -11,7 +11,7 @@ priority = 210
 
 [[runtime.programs]]
 name = "mastermind-loop"
-command = "python3 supervisor_loop.py"
+command = "python3 functions/supervisor_loop.py"
 directory = "/opt/NAPOLEON_HILLS_AI_MASTERMIND_CLASSES"
 autostart = false
 autorestart = false

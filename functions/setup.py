@@ -4,7 +4,7 @@ Minimal project installer.
 
 Creates a local venv and installs only the packages needed for the configured
 runtime mode:
-- always: Flask for mastermind_web.py
+- always: Flask for webui.py
 - optional: litellm when no OPENAI_API_BASE is configured
 """
 

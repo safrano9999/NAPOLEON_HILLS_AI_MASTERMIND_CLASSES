@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-mastermind_web.py — Napoleon Hill Mastermind web editor.
+webui.py — Napoleon Hill Mastermind web editor.
 Lives in the project root. Shows all .md files across all folders.
 Now includes mastermind_config.md for easy configuration editing.
-Run: python mastermind_web.py
+Run: python3 webui.py
 """
 
 import os
@@ -11,6 +11,8 @@ import signal
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "functions"))
 
 os.environ.setdefault("FLASK_SKIP_DOTENV", "1")
 

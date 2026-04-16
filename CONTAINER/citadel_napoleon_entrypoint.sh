@@ -45,4 +45,4 @@ fi
 if [ -x /opt/CITADEL/scan.sh ]; then
   (cd /opt/CITADEL && ./scan.sh || true)
 fi
-exec /bin/bash -lc 'cd /opt/NAPOLEON_HILLS_AI_MASTERMIND_CLASSES && python3 setup.py && python3 mastermind_web.py'
+exec /bin/bash -lc 'cd /opt/NAPOLEON_HILLS_AI_MASTERMIND_CLASSES && python3 functions/setup.py && python3 webui.py'

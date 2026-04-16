@@ -19,7 +19,8 @@ from pathlib import Path
 from datetime import datetime
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-BASE_DIR      = Path(__file__).parent
+# Project root is one level above functions/
+BASE_DIR      = Path(__file__).resolve().parent.parent
 MEMBERS_AI    = BASE_DIR / "members_ai"
 MEMBERS_HUMAN = BASE_DIR / "members"
 MEMBERS_AGENT = BASE_DIR / "members_agents"
@@ -27,6 +28,7 @@ SESSIONS_DIR  = BASE_DIR / "sessions"
 RULES_FILE    = BASE_DIR / "rules.md"
 CONFIG_FILE   = BASE_DIR / "mastermind_config.md"
 RUN_FILE      = BASE_DIR / "supervisor_loop.run"
+PROMPT_DIR    = BASE_DIR / "PROMPT"
 
 
 # ── Config loading ───────────────────────────────────────────────────────────
@@ -39,6 +41,7 @@ def load_config() -> dict:
     defaults = {
         "sleep_seconds": 0.5,
         "response_sentences": "4-5",
+        "prompt_style": "default",
     }
     allowed_keys = set(defaults) | {"default_model"}
 
@@ -339,43 +342,24 @@ def call_llm(session: dict, speaker_name: str) -> str | None:
     session_text = session["text"]
 
     sentences = CFG.get("response_sentences", "4-5")
+    style     = CFG.get("prompt_style", "default")
 
-    prompt = f"""CRITICAL INSTRUCTION: You MUST respond with VALID JSON ONLY. No other text is allowed.
+    # Load prompt template from PROMPT/<style>.md (fallback: default.md)
+    template_path = PROMPT_DIR / f"{style}.md"
+    if not template_path.exists():
+        print(f"  [WARN] Prompt style '{style}' not found, falling back to default.")
+        template_path = PROMPT_DIR / "default.md"
+    if not template_path.exists():
+        raise RuntimeError(f"Missing prompt template: {template_path}")
 
-You are {speaker_name} in a Napoleon Hill Mastermind session.
-
-=== YOUR PERSONA ===
-{persona_md}
-
-=== RULES ===
-{rules_text}
-
-=== SESSION (full conversation so far) ===
-{session_text}
-
-=== YOUR TASK ===
-It is now your turn to speak as {speaker_name}.
-Read the full conversation above and respond in character.
-
-IMPORTANT FORMAT REQUIREMENTS:
-1. Your response MUST be VALID JSON
-2. NO text before the JSON
-3. NO text after the JSON
-4. NO markdown code blocks (no ```)
-5. NO explanation or commentary
-6. ONLY the JSON object
-
-REQUIRED JSON FORMAT (copy this structure exactly):
-{{
-  "speaker": "{speaker_name}",
-  "response": "Your {sentences} sentence response here."
-}}
-
-EXAMPLE VALID RESPONSE:
-{{"speaker": "{speaker_name}", "response": "This is my response as {speaker_name}. I stay in character. Here is another sentence. And one more to complete my thought."}}
-
-NOW OUTPUT YOUR RESPONSE AS VALID JSON ONLY:
-"""
+    template = template_path.read_text()
+    prompt = template.format(
+        speaker_name=speaker_name,
+        persona_md=persona_md,
+        rules_text=rules_text,
+        session_text=session_text,
+        sentences=sentences,
+    )
 
     # Check if persona has a specific model, otherwise use default
     persona_model = get_member_model(speaker_name)

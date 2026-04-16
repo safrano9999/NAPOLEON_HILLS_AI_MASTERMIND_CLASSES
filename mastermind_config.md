@@ -15,6 +15,11 @@ response_sentences: 4-5
 
 How many sentences each AI member should speak per turn. Examples: "2-3", "4-5", "1", "5-7"
 
+Prompt Style
+prompt_style: default
+
+Which prompt template to use from PROMPT/. The value matches the filename without `.md`. Add new styles by dropping a new file into PROMPT/.
+
 Loop Settings
 sleep_seconds: 1
 
