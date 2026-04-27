@@ -2,139 +2,44 @@
 """
 webui.py — Napoleon Hill Mastermind web editor.
 Lives in the project root. Shows all .md files across all folders.
-Now includes mastermind_config.md for easy configuration editing.
+Config via config/mastermind_config.toml.
 Run: python3 webui.py
 """
 
-import os
-import signal
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "functions"))
 
-os.environ.setdefault("FLASK_SKIP_DOTENV", "1")
-
-# ── add venv site-packages so flask is available ────────────────────────────
-_venv_site = Path(__file__).parent / "venv" / "lib"
-if _venv_site.exists():
-    for _p in _venv_site.glob("python*/site-packages"):
-        if str(_p) not in sys.path:
-            sys.path.insert(0, str(_p))
-
 from python_header import get, get_port  # noqa: F401 — loads .env
-from flask import Flask, request, jsonify, render_template_string, send_from_directory
 
-BASE_DIR = Path(__file__).parent
-CONFIG_FILE = BASE_DIR / "mastermind_config.md"
-PID_FILE = BASE_DIR / "supervisor_loop.pid"
-RUN_FILE = BASE_DIR / "supervisor_loop.run"
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from jinja2 import Template
 
+import core
 
-def read_pid() -> int | None:
-    if not PID_FILE.exists():
-        return None
-    try:
-        return int(PID_FILE.read_text().strip())
-    except (TypeError, ValueError):
-        return None
+BASE_DIR = core.BASE_DIR
+TOML_CONFIG = core.TOML_CONFIG
+MEMBERS_AI = core.MEMBERS_AI
 
-
-def loop_pids() -> list[int]:
-    result = subprocess.run(
-        ["pgrep", "-f", str(BASE_DIR / "supervisor_loop.py")],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    pids = []
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        if line.isdigit():
-            pids.append(int(line))
-    return pids
-
-
-def get_loop_status() -> dict:
-    pids = loop_pids()
-    pid = pids[0] if pids else read_pid()
-    running = bool(pids)
-    if not running and PID_FILE.exists():
-        PID_FILE.unlink(missing_ok=True)
-        pid = None
-    return {"running": running, "pid": pid, "pids": pids, "enabled": RUN_FILE.exists()}
-
-
-def start_loop() -> dict:
-    RUN_FILE.write_text("run\n")
-    status = get_loop_status()
-    if status["running"]:
-        return status
-
-    proc = subprocess.Popen(
-        [sys.executable, "-u", str(BASE_DIR / "supervisor_loop.py")],
-        cwd=BASE_DIR,
-        start_new_session=True,
-    )
-    PID_FILE.write_text(str(proc.pid))
-    return {"running": True, "pid": proc.pid, "pids": [proc.pid], "enabled": True}
-
-
-def stop_loop() -> dict:
-    RUN_FILE.unlink(missing_ok=True)
-    status = get_loop_status()
-    PID_FILE.unlink(missing_ok=True)
-    return {"running": status["running"], "pid": status["pid"], "pids": status.get("pids", []), "enabled": False}
-
-
-def load_config() -> dict:
-    """
-    Load mastermind_config.md - parses key: value lines.
-    Returns dict with defaults for missing values.
-    """
-    defaults = {
-        "editor_host": "0.0.0.0",
-        "editor_port": 7700,
-        "editor_refresh_ms": 2000,
-        "response_sentences": "4-5",
-        "sleep_seconds": 10,
-    }
-    allowed_keys = set(defaults) | {"default_model"}
-
-    if not CONFIG_FILE.exists():
-        return defaults
-
-    cfg = {}
-    for line in CONFIG_FILE.read_text().splitlines():
-        line = line.strip()
-        # Skip empty lines, comments, headers, and markdown formatting
-        if not line or line.startswith("#") or line.startswith("-") or line.startswith("*"):
-            continue
-        if ":" in line and not line.startswith("http"):
-            k, _, v = line.partition(":")
-            k = k.strip().lower().replace(" ", "_")
-            v = v.strip().strip('"').strip("'")
-            # Skip markdown-style lines
-            if k in allowed_keys:
-                if v.isdigit():
-                    v = int(v)
-                elif v.lower() in ("true", "false"):
-                    v = v.lower() == "true"
-                cfg[k] = v
-
-    return {**defaults, **cfg}
-
-CFG = load_config()
+CFG = core.load_config()
 
 PORT = get_port("NAPOLEON_PORT", int(CFG.get("editor_port", 7700)))
 HOST = get("HOST") or get("EDITOR_HOST") or CFG.get("editor_host", "0.0.0.0")
-REFRESH_MS = CFG.get("editor_refresh_ms", 2000)  # Default 2 seconds
+REFRESH_MS = CFG.get("editor_refresh_ms", 2000)
 
 # Folders to show in sidebar (in order)
 FOLDERS_CONFIG = ["sessions", "members_ai", "members", "members_agents"]
 
-app = Flask(__name__)
+app = FastAPI()
+
+# Static files
+_static_dir = BASE_DIR / "static"
+if _static_dir.is_dir():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -170,6 +75,12 @@ HTML = """<!DOCTYPE html>
   .file-item.config-file.active { background: #2a2a1e; border-left-color: #f7b87e; }
 
   #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #tabs { display: flex; border-bottom: 1px solid #333; background: #161616; }
+  .tab { padding: 8px 20px; background: none; border: none; border-bottom: 2px solid transparent; color: #888; cursor: pointer; font-family: inherit; font-size: 13px; }
+  .tab:hover { color: #ddd; }
+  .tab.active { color: #7eb8f7; border-bottom-color: #7eb8f7; }
+  #editor-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #config-view { flex: 1; overflow-y: auto; display: none; }
   #toolbar { padding: 10px 16px; background: #161616; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 12px; }
   #filename { font-size: 13px; color: #7eb8f7; flex: 1; }
   #filename.config { color: #f7b87e; }
@@ -197,18 +108,44 @@ HTML = """<!DOCTYPE html>
 </div>
 
 <div id="main">
-  <div id="toolbar">
-    <span id="filename">select a file</span>
-    <span id="status"></span>
-    <button id="save-btn" onclick="saveFile()" style="display:none">Save</button>
+  <div id="tabs">
+    <button class="tab active" onclick="switchTab('editor')">Editor</button>
+    <button class="tab" onclick="switchTab('config')">Configuration</button>
   </div>
-  <div id="empty">Select a file to edit</div>
-  <textarea id="editor" style="display:none" spellcheck="false"></textarea>
+  <div id="editor-view">
+    <div id="toolbar">
+      <span id="filename">select a file</span>
+      <span id="status"></span>
+      <button id="save-btn" onclick="saveFile()" style="display:none">Save</button>
+    </div>
+    <div id="empty">Select a file to edit</div>
+    <textarea id="editor" style="display:none" spellcheck="false"></textarea>
+  </div>
+  <div id="config-view"></div>
 </div>
 
 <script>
 let currentFile = null;
 let stickToBottom = true;
+let configLoaded = false;
+
+function encodePath(p) {
+  return p.split('/').map(encodeURIComponent).join('/');
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('editor-view').style.display = tab === 'editor' ? 'flex' : 'none';
+  document.getElementById('config-view').style.display = tab === 'config' ? 'block' : 'none';
+  if (tab === 'config' && !configLoaded) {
+    fetch('/static/config.html').then(r => r.text()).then(html => {
+      document.getElementById('config-view').innerHTML = html;
+      configLoaded = true;
+      if (typeof initConfig === 'function') initConfig();
+    });
+  }
+}
 
 function updateLoopUi(data) {
   const running = !!data.running;
@@ -234,7 +171,6 @@ async function stopLoop() {
 }
 
 function isAtBottom(el) {
-  // Allow 50px tolerance
   return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
 }
 
@@ -249,7 +185,6 @@ async function loadTree() {
   const div = document.getElementById('tree');
   div.innerHTML = '';
 
-  // Config section first (special styling)
   if (tree.config && tree.config.length) {
     const header = document.createElement('div');
     header.className = 'folder-header config-section';
@@ -270,7 +205,6 @@ async function loadTree() {
     });
   }
 
-  // Regular folders
   for (const [folder, files] of Object.entries(tree)) {
     if (folder === 'config' || folder === 'root') continue;
     if (!files.length) continue;
@@ -304,9 +238,8 @@ async function loadTree() {
     });
   }
 
-  // Root files (except config)
   if (tree.root && tree.root.length) {
-    const nonConfigRoot = tree.root.filter(f => f !== 'mastermind_config.md');
+    const nonConfigRoot = tree.root;
     if (nonConfigRoot.length) {
       const header = document.createElement('div');
       header.className = 'folder-header';
@@ -333,7 +266,7 @@ async function newFile(folder) {
   const name = prompt('New file name (without .md):');
   if (!name) return;
   const path = folder + '/' + name.replace(/\\.md$/, '') + '.md';
-  const r = await fetch('/api/file/' + encodeURIComponent(path), {
+  const r = await fetch('/api/file/' + encodePath(path), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content: '' })
@@ -343,7 +276,7 @@ async function newFile(folder) {
 }
 
 async function openFile(path) {
-  const r = await fetch('/api/file/' + encodeURIComponent(path));
+  const r = await fetch('/api/file/' + encodePath(path));
   const data = await r.json();
   if (data.error) return;
   const editor = document.getElementById('editor');
@@ -351,7 +284,7 @@ async function openFile(path) {
 
   const filenameEl = document.getElementById('filename');
   filenameEl.textContent = path;
-  filenameEl.className = path === 'mastermind_config.md' ? 'config' : '';
+  filenameEl.className = path.startsWith('config/') ? 'config' : '';
 
   document.getElementById('empty').style.display = 'none';
   editor.style.display = 'block';
@@ -361,7 +294,6 @@ async function openFile(path) {
   document.querySelectorAll('.file-item').forEach(el => {
     el.classList.toggle('active', el.dataset.path === path);
   });
-  // Scroll to bottom and enable auto-scroll
   stickToBottom = true;
   editor.scrollTop = editor.scrollHeight;
 }
@@ -369,7 +301,7 @@ async function openFile(path) {
 async function saveFile() {
   if (!currentFile) return;
   const content = document.getElementById('editor').value;
-  const r = await fetch('/api/file/' + encodeURIComponent(currentFile), {
+  const r = await fetch('/api/file/' + encodePath(currentFile), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content })
@@ -384,17 +316,14 @@ async function saveFile() {
 async function refreshCurrentFile() {
   if (!currentFile) return;
   const editor = document.getElementById('editor');
-  // Don't refresh if user is actively editing (has focus)
   if (document.activeElement === editor) return;
 
-  const r = await fetch('/api/file/' + encodeURIComponent(currentFile));
+  const r = await fetch('/api/file/' + encodePath(currentFile));
   const data = await r.json();
   if (data.error) return;
 
-  // Only update if content changed
   if (editor.value !== data.content) {
     editor.value = data.content;
-    // Only scroll to bottom if user was already at bottom
     if (stickToBottom) {
       editor.scrollTop = editor.scrollHeight;
     }
@@ -408,7 +337,6 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveFile(); }
 });
 
-// Track scroll position to enable/disable auto-scroll
 document.getElementById('editor').addEventListener('scroll', updateStickToBottom);
 
 loadTree();
@@ -421,20 +349,22 @@ setInterval(refreshLoopStatus, {{ refresh_ms }});
 </html>
 """
 
+_html_template = Template(HTML)
 
-@app.route("/")
+
+@app.get("/", response_class=HTMLResponse)
 def index():
-    return render_template_string(HTML, refresh_ms=REFRESH_MS)
+    return _html_template.render(refresh_ms=REFRESH_MS)
 
 
-@app.route("/api/tree")
+@app.get("/api/tree")
 def tree():
     result = {}
 
     # Config files (special section at top)
     config_files = []
-    if CONFIG_FILE.exists():
-        config_files.append("mastermind_config.md")
+    if TOML_CONFIG.exists():
+        config_files.append("config/mastermind_config.toml")
     result["config"] = config_files
 
     # Standard folders
@@ -447,55 +377,120 @@ def tree():
     if root_mds:
         result["root"] = root_mds
 
-    return jsonify(result)
+    return result
 
 
-@app.route("/api/file/<path:filepath>", methods=["GET"])
-def get_file(filepath):
+@app.get("/api/file/{filepath:path}")
+def get_file(filepath: str):
     path = (BASE_DIR / filepath).resolve()
-    if not str(path).startswith(str(BASE_DIR)):
-        return jsonify({"error": "forbidden"}), 403
-    if not path.exists() or path.suffix != ".md":
-        return jsonify({"error": "not found"}), 404
-    return jsonify({"content": path.read_text()})
+    if not path.is_relative_to(BASE_DIR):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    if not path.exists() or path.suffix not in (".md", ".toml"):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return {"content": path.read_text()}
 
 
-@app.route("/api/file/<path:filepath>", methods=["POST"])
-def save_file(filepath):
+@app.post("/api/file/{filepath:path}")
+async def save_file(filepath: str, request: Request):
     path = (BASE_DIR / filepath).resolve()
-    if not str(path).startswith(str(BASE_DIR)):
-        return jsonify({"ok": False, "error": "forbidden"}), 403
-    if path.suffix != ".md":
-        return jsonify({"ok": False, "error": "only .md allowed"}), 400
+    if not path.is_relative_to(BASE_DIR):
+        return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
+    if path.suffix not in (".md", ".toml"):
+        return JSONResponse({"ok": False, "error": "only .md/.toml allowed"}, status_code=400)
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = request.get_json()
+    data = await request.json()
     path.write_text(data.get("content", ""))
-    return jsonify({"ok": True})
+    return {"ok": True}
 
 
-@app.route("/assets/<path:filename>")
-def assets(filename):
-    return send_from_directory(BASE_DIR, filename)
+_ASSETS_DIR = BASE_DIR / "assets"
+_SAFE_ASSET_EXT = {".css", ".js", ".png", ".jpg", ".jpeg", ".svg", ".ico",
+                   ".woff", ".woff2", ".ttf", ".eot"}
 
 
-@app.route("/api/loop/status")
-def loop_status():
-    return jsonify(get_loop_status())
+@app.get("/assets/{filename:path}")
+def assets(filename: str):
+    target = (_ASSETS_DIR / filename).resolve()
+    if not target.is_relative_to(_ASSETS_DIR) or not target.is_file():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    if target.suffix.lower() not in _SAFE_ASSET_EXT:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return FileResponse(target)
 
 
-@app.route("/api/loop/start", methods=["POST"])
-def loop_start():
-    return jsonify(start_loop())
+@app.get("/api/config")
+def api_get_config():
+    return core.get_config()
 
 
-@app.route("/api/loop/stop", methods=["POST"])
-def loop_stop():
-    return jsonify(stop_loop())
+@app.post("/api/config")
+async def api_save_config(request: Request):
+    core.save_config(await request.json())
+    return {"ok": True}
+
+
+@app.get("/api/member/{name}")
+def api_get_member(name: str):
+    result = core.get_member(name)
+    if "error" in result:
+        return JSONResponse(result, status_code=404)
+    return result
+
+
+@app.post("/api/member/{name}")
+async def api_save_member(name: str, request: Request):
+    data = await request.json()
+    result = core.save_member(name, data.get("content", ""))
+    if "error" in result:
+        return JSONResponse(result, status_code=403)
+    return result
+
+
+@app.get("/api/prompt/{name}")
+def api_get_prompt(name: str):
+    result = core.get_prompt(name)
+    if "error" in result:
+        return JSONResponse(result, status_code=404)
+    return result
+
+
+@app.post("/api/prompt/{name}")
+async def api_save_prompt(name: str, request: Request):
+    data = await request.json()
+    result = core.save_prompt(name, data.get("content", ""))
+    if "error" in result:
+        return JSONResponse(result, status_code=403)
+    return result
+
+
+@app.get("/api/models")
+def api_list_models():
+    return core.discover_models()
+
+
+@app.get("/api/check")
+def api_check_deps():
+    return core.check_connections()
+
+
+@app.get("/api/loop/status")
+def api_loop_status():
+    return core.loop_status()
+
+
+@app.post("/api/loop/start")
+def api_loop_start():
+    return core.loop_start()
+
+
+@app.post("/api/loop/stop")
+def api_loop_stop():
+    return core.loop_stop()
 
 
 if __name__ == "__main__":
     print(f"[mastermind_web] http://{HOST}:{PORT}")
     print(f"[mastermind_web] root: {BASE_DIR}")
-    print(f"[mastermind_web] Config: {'found' if CONFIG_FILE.exists() else 'not found'}")
+    print(f"[mastermind_web] Config: {'found' if TOML_CONFIG.exists() else 'not found'}")
     print(f"[mastermind_web] Refresh: {REFRESH_MS}ms")
-    app.run(host=HOST, port=PORT, debug=False)
+    uvicorn.run(app, host=HOST, port=PORT)

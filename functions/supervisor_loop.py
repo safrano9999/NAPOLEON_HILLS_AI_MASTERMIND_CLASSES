@@ -13,6 +13,7 @@ import time
 import subprocess
 import json
 import re
+import tomllib
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -26,7 +27,8 @@ MEMBERS_HUMAN = BASE_DIR / "members"
 MEMBERS_AGENT = BASE_DIR / "members_agents"
 SESSIONS_DIR  = BASE_DIR / "sessions"
 RULES_FILE    = BASE_DIR / "rules.md"
-CONFIG_FILE   = BASE_DIR / "mastermind_config.md"
+CONFIG_FILE   = BASE_DIR / "mastermind_config.md"  # legacy fallback
+TOML_CONFIG   = BASE_DIR / "config" / "mastermind_config.toml"
 RUN_FILE      = BASE_DIR / "supervisor_loop.run"
 PROMPT_DIR    = BASE_DIR / "PROMPT"
 
@@ -35,36 +37,47 @@ PROMPT_DIR    = BASE_DIR / "PROMPT"
 
 def load_config() -> dict:
     """
-    Load mastermind_config.md - parses key: value lines from the markdown.
-    Returns dict with defaults for missing values.
+    Load config from mastermind_config.toml (preferred) or .md (legacy fallback).
+    Returns flat dict with defaults for missing values.
     """
     defaults = {
         "sleep_seconds": 0.5,
         "response_sentences": "4-5",
         "prompt_style": "default",
+        "backend": "proxy",
     }
-    allowed_keys = set(defaults) | {"default_model"}
 
+    if TOML_CONFIG.exists():
+        with open(TOML_CONFIG, "rb") as f:
+            raw = tomllib.load(f)
+        cfg = {**defaults}
+        cfg.update(raw.get("general", {}))
+        cfg["proxy_url"] = raw.get("proxy", {}).get("url", "")
+        cfg["proxy_api_key"] = raw.get("proxy", {}).get("api_key", "")
+        for k, v in raw.get("editor", {}).items():
+            cfg[f"editor_{k}"] = v
+        cfg["_models"] = raw.get("models", {})
+        return cfg
+
+    # Legacy fallback: parse mastermind_config.md
+    allowed_keys = set(defaults) | {"default_model"}
     if not CONFIG_FILE.exists():
-        print(f"[INFO] No mastermind_config.md found, using defaults.")
+        print("[INFO] No config file found, using defaults.")
         return defaults
 
     cfg = {}
     for line in CONFIG_FILE.read_text().splitlines():
         line = line.strip()
-        # Skip empty lines, comments, headers, and markdown formatting
         if not line or line.startswith("#") or line.startswith("-") or line.startswith("*"):
             continue
         if line == "---":
             continue
-        # Parse key: value lines (but skip URLs like http:)
         if ":" in line and not line.startswith("http"):
             k, _, v = line.partition(":")
             k = k.strip().lower().replace(" ", "_")
             v = v.strip().strip('"').strip("'")
             if k in allowed_keys:
-                # Type conversion
-                if v.replace(".", "", 1).isdigit():  # handles int and float
+                if v.replace(".", "", 1).isdigit():
                     v = float(v) if "." in v else int(v)
                 elif v.lower() in ("true", "false"):
                     v = v.lower() == "true"
@@ -142,17 +155,22 @@ def read_member_md(name: str) -> str:
 
 def get_member_model(name: str) -> str | None:
     """
-    Check if member MD has a model: line in the first 3 lines.
-    Returns the model string or None if not specified.
+    Resolve model for a member with 3-tier priority:
+    1. model: line in .md file (highest)
+    2. [models] table in TOML config
+    3. None → caller falls back to default_model
     """
     content = read_member_md(name)
-    if not content:
-        return None
+    if content:
+        for line in content.splitlines()[:3]:
+            line = line.strip()
+            if line.lower().startswith("model:"):
+                return line.split(":", 1)[1].strip()
 
-    for line in content.splitlines()[:3]:
-        line = line.strip()
-        if line.lower().startswith("model:"):
-            return line.split(":", 1)[1].strip()
+    toml_models = CFG.get("_models", {})
+    if name in toml_models:
+        return toml_models[name]
+
     return None
 
 
@@ -271,11 +289,17 @@ def is_kilocode_model(model: str) -> bool:
 
 
 def use_openai_compatible_api() -> bool:
-    """Route model calls through an OpenAI-compatible /v1 endpoint when OPENAI_API_BASE is set."""
-    return bool(openai_api_base())
+    """Route model calls through an OpenAI-compatible /v1 endpoint when backend=proxy."""
+    if CFG.get("backend") == "proxy":
+        return bool(openai_api_base())
+    return False
 
 
 def openai_api_base() -> str:
+    # TOML proxy.url takes precedence over env var
+    toml_url = CFG.get("proxy_url", "").strip().rstrip("/")
+    if toml_url:
+        return toml_url
     return os.environ.get("OPENAI_API_BASE", "").strip().rstrip("/")
 
 
@@ -291,7 +315,7 @@ def normalize_openai_model(model: str) -> str:
 
 def call_openai_compatible(model: str, prompt: str) -> str:
     api_base = openai_api_base()
-    api_key = os.environ.get("OPENAI_API_KEY", "")
+    api_key = CFG.get("proxy_api_key", "").strip() or os.environ.get("OPENAI_API_KEY", "")
     if not api_base:
         raise RuntimeError("OPENAI_API_BASE is empty")
 

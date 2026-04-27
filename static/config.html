@@ -1,0 +1,332 @@
+<style>
+  .cfg { padding: 24px; max-width: 900px; }
+  .cfg h2 { color: #7eb8f7; font-size: 14px; text-transform: uppercase; letter-spacing: 1.5px; margin: 0 0 16px 0; }
+  .cfg-section { margin-bottom: 32px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px; padding: 20px; }
+  .cfg-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .cfg-row label { width: 180px; color: #999; font-size: 12px; flex-shrink: 0; }
+  .cfg-row input, .cfg-row select { background: #111; border: 1px solid #333; color: #e0e0e0; padding: 6px 10px; border-radius: 4px; font-family: inherit; font-size: 13px; flex: 1; max-width: 350px; }
+  .cfg-row select { max-width: 366px; }
+  .cfg-row input:focus, .cfg-row select:focus { border-color: #7eb8f7; outline: none; }
+  .cfg-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+  .btn { padding: 7px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-family: inherit; }
+  .btn-primary { background: #2a5298; color: #fff; }
+  .btn-primary:hover { background: #3a6bc8; }
+  .btn-secondary { background: #333; color: #ccc; }
+  .btn-secondary:hover { background: #444; }
+  .btn-small { padding: 4px 12px; font-size: 11px; }
+  .status-msg { font-size: 12px; margin-left: 8px; }
+  .status-ok { color: #5cb85c; }
+  .status-err { color: #d9534f; }
+  .status-info { color: #7eb8f7; }
+
+  .check-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .check-dot { width: 10px; height: 10px; border-radius: 50%; background: #444; flex-shrink: 0; }
+  .check-dot.ok { background: #5cb85c; }
+  .check-dot.err { background: #d9534f; }
+  .check-label { font-size: 12px; color: #999; }
+
+  .persona-card { background: #111; border: 1px solid #2a2a2a; border-radius: 6px; padding: 16px; margin-bottom: 12px; }
+  .persona-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; cursor: pointer; }
+  .persona-name { color: #e0e0e0; font-size: 14px; font-weight: bold; flex: 1; }
+  .persona-model { font-size: 11px; color: #666; }
+  .persona-toggle { color: #555; font-size: 16px; }
+  .persona-body { display: none; margin-top: 12px; }
+  .persona-body.open { display: block; }
+  .persona-editor { width: 100%; min-height: 250px; background: #0d0d0d; border: 1px solid #333; color: #e0e0e0; padding: 12px; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6; resize: vertical; border-radius: 4px; }
+  .persona-editor:focus { border-color: #7eb8f7; outline: none; }
+
+  .prompt-editor { width: 100%; min-height: 200px; background: #0d0d0d; border: 1px solid #333; color: #e0e0e0; padding: 12px; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6; resize: vertical; border-radius: 4px; margin-top: 10px; }
+  .prompt-editor:focus { border-color: #7eb8f7; outline: none; }
+</style>
+
+<div class="cfg">
+  <!-- CONNECTION STATUS -->
+  <div class="cfg-section">
+    <h2>Connection Status</h2>
+    <div id="check-results">
+      <div class="check-row"><div class="check-dot" id="check-proxy-dot"></div><span class="check-label" id="check-proxy-label">Proxy: checking...</span></div>
+      <div class="check-row"><div class="check-dot" id="check-sdk-dot"></div><span class="check-label" id="check-sdk-label">SDK (litellm): checking...</span></div>
+    </div>
+    <button class="btn btn-secondary btn-small" onclick="runChecks()" style="margin-top:8px">Recheck</button>
+  </div>
+
+  <!-- GENERAL SETTINGS -->
+  <div class="cfg-section">
+    <h2>General Settings</h2>
+    <div class="cfg-row"><label>Default Model</label><input id="cfg-default-model" list="model-datalist" placeholder="e.g. gemini/gemini-flash-latest"></div>
+    <div class="cfg-row"><label>Response Sentences</label><input id="cfg-response-sentences" placeholder="e.g. 4-5"></div>
+    <div class="cfg-row"><label>Sleep Seconds</label><input id="cfg-sleep-seconds" type="number" step="0.5" min="0"></div>
+    <div class="cfg-row">
+      <label>Backend</label>
+      <select id="cfg-backend" onchange="toggleProxyFields()">
+        <option value="proxy">Proxy (OpenAI-compatible)</option>
+        <option value="sdk">SDK (litellm direct)</option>
+      </select>
+    </div>
+    <div id="proxy-fields">
+      <div class="cfg-row"><label>Proxy URL</label><input id="cfg-proxy-url" placeholder="http://127.0.0.1:4000/v1"></div>
+      <div class="cfg-row"><label>Proxy API Key</label><input id="cfg-proxy-key" type="password" placeholder="(optional)"></div>
+    </div>
+    <div class="cfg-actions">
+      <button class="btn btn-primary" onclick="saveGeneralConfig()">Save Settings</button>
+      <span id="cfg-save-status" class="status-msg"></span>
+    </div>
+  </div>
+
+  <!-- PROMPT DIRECTIVES -->
+  <div class="cfg-section">
+    <h2>Prompt Directives</h2>
+    <div class="cfg-row">
+      <label>Active Style</label>
+      <select id="cfg-prompt-style" onchange="loadPrompt(this.value)"></select>
+    </div>
+    <textarea class="prompt-editor" id="prompt-editor-area" placeholder="Select a prompt style above to edit..."></textarea>
+    <div class="cfg-actions">
+      <button class="btn btn-primary" onclick="savePrompt()">Save Prompt</button>
+      <button class="btn btn-secondary" onclick="newPrompt()">New Style</button>
+      <span id="prompt-save-status" class="status-msg"></span>
+    </div>
+  </div>
+
+  <!-- PERSONAS -->
+  <div class="cfg-section">
+    <h2>Personas</h2>
+    <p style="color:#555;font-size:11px;margin-bottom:16px">Click a persona to expand. Model overrides in the persona text (line 1: <code>model: ...</code>) take precedence over the assignment below.</p>
+    <div id="personas-list"></div>
+  </div>
+</div>
+
+<datalist id="model-datalist"></datalist>
+
+<script>
+let _configData = null;
+let _currentPromptName = null;
+
+async function initConfig() {
+  await loadConfigData();
+  runChecks();
+  fetchAvailableModels();
+}
+
+async function loadConfigData() {
+  const r = await fetch('/api/config');
+  _configData = await r.json();
+  const g = _configData.general || {};
+  const p = _configData.proxy || {};
+
+  document.getElementById('cfg-default-model').value = g.default_model || '';
+  document.getElementById('cfg-response-sentences').value = g.response_sentences || '4-5';
+  document.getElementById('cfg-sleep-seconds').value = g.sleep_seconds ?? 1;
+  document.getElementById('cfg-backend').value = g.backend || 'proxy';
+  document.getElementById('cfg-proxy-url').value = p.url || '';
+  document.getElementById('cfg-proxy-key').value = p.api_key || '';
+  toggleProxyFields();
+
+  // Prompt styles
+  const sel = document.getElementById('cfg-prompt-style');
+  sel.innerHTML = '';
+  (_configData.prompt_styles || []).forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s; opt.textContent = s;
+    if (s === g.prompt_style) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  if (sel.value) loadPrompt(sel.value);
+
+  // Personas
+  buildPersonas(_configData.characters || [], _configData.models || {});
+}
+
+function toggleProxyFields() {
+  const isProxy = document.getElementById('cfg-backend').value === 'proxy';
+  document.getElementById('proxy-fields').style.display = isProxy ? 'block' : 'none';
+}
+
+async function runChecks() {
+  document.getElementById('check-proxy-label').textContent = 'Proxy: checking...';
+  document.getElementById('check-sdk-label').textContent = 'SDK: checking...';
+  document.getElementById('check-proxy-dot').className = 'check-dot';
+  document.getElementById('check-sdk-dot').className = 'check-dot';
+
+  try {
+    const r = await fetch('/api/check');
+    const data = await r.json();
+    if (data.proxy) {
+      const ok = data.proxy.ok;
+      document.getElementById('check-proxy-dot').className = 'check-dot ' + (ok ? 'ok' : 'err');
+      document.getElementById('check-proxy-label').textContent = ok
+        ? `Proxy: connected (${data.proxy.models} models) — ${data.proxy.url}`
+        : `Proxy: ${data.proxy.error}`;
+    }
+    if (data.sdk) {
+      const ok = data.sdk.ok;
+      document.getElementById('check-sdk-dot').className = 'check-dot ' + (ok ? 'ok' : 'err');
+      document.getElementById('check-sdk-label').innerHTML = ok
+        ? `SDK: litellm ${data.sdk.version} installed`
+        : `<span style="color:#d9534f">&#10008; SDK: litellm not found — please install litellm sdk</span> <code style="color:#888;font-size:11px">pip install litellm</code>`;
+    }
+  } catch(e) {
+    document.getElementById('check-proxy-label').textContent = 'Check failed: ' + e.message;
+  }
+}
+
+async function fetchAvailableModels() {
+  try {
+    const r = await fetch('/api/models');
+    const data = await r.json();
+    if (data.models && data.models.length) {
+      const dl = document.getElementById('model-datalist');
+      dl.innerHTML = data.models.map(m => `<option value="${m}">`).join('');
+    }
+  } catch(e) { /* silent */ }
+}
+
+async function saveGeneralConfig() {
+  const status = document.getElementById('cfg-save-status');
+  const payload = {
+    general: {
+      default_model: document.getElementById('cfg-default-model').value,
+      response_sentences: document.getElementById('cfg-response-sentences').value,
+      prompt_style: document.getElementById('cfg-prompt-style').value,
+      sleep_seconds: parseFloat(document.getElementById('cfg-sleep-seconds').value) || 1,
+      backend: document.getElementById('cfg-backend').value,
+    },
+    proxy: {
+      url: document.getElementById('cfg-proxy-url').value,
+      api_key: document.getElementById('cfg-proxy-key').value,
+    },
+    editor: _configData.editor || {},
+    models: collectModels(),
+  };
+  try {
+    const r = await fetch('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    const data = await r.json();
+    status.textContent = data.ok ? 'Saved!' : 'Error';
+    status.className = 'status-msg ' + (data.ok ? 'status-ok' : 'status-err');
+  } catch(e) {
+    status.textContent = e.message;
+    status.className = 'status-msg status-err';
+  }
+  setTimeout(() => status.textContent = '', 3000);
+}
+
+function collectModels() {
+  const models = {};
+  document.querySelectorAll('.persona-model-input').forEach(input => {
+    if (input.value.trim()) models[input.dataset.name] = input.value.trim();
+  });
+  return models;
+}
+
+// ── Prompt Directives ──
+
+async function loadPrompt(name) {
+  _currentPromptName = name;
+  const r = await fetch('/api/prompt/' + encodeURIComponent(name));
+  const data = await r.json();
+  document.getElementById('prompt-editor-area').value = data.content || '';
+}
+
+async function savePrompt() {
+  const name = _currentPromptName || document.getElementById('cfg-prompt-style').value;
+  if (!name) return;
+  const status = document.getElementById('prompt-save-status');
+  const content = document.getElementById('prompt-editor-area').value;
+  try {
+    const r = await fetch('/api/prompt/' + encodeURIComponent(name), {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ content })
+    });
+    const data = await r.json();
+    status.textContent = data.ok ? 'Saved!' : 'Error';
+    status.className = 'status-msg ' + (data.ok ? 'status-ok' : 'status-err');
+  } catch(e) {
+    status.textContent = e.message;
+    status.className = 'status-msg status-err';
+  }
+  setTimeout(() => status.textContent = '', 3000);
+}
+
+function newPrompt() {
+  const name = prompt('New prompt style name (without .md):');
+  if (!name || !name.trim()) return;
+  const clean = name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  _currentPromptName = clean;
+  document.getElementById('prompt-editor-area').value = '';
+  // Add to dropdown
+  const sel = document.getElementById('cfg-prompt-style');
+  const opt = document.createElement('option');
+  opt.value = clean; opt.textContent = clean; opt.selected = true;
+  sel.appendChild(opt);
+}
+
+// ── Personas ──
+
+function buildPersonas(characters, models) {
+  const container = document.getElementById('personas-list');
+  container.innerHTML = '';
+  characters.forEach(name => {
+    const card = document.createElement('div');
+    card.className = 'persona-card';
+    card.innerHTML = `
+      <div class="persona-header" onclick="togglePersona('${name}')">
+        <span class="persona-name">${name.replace(/_/g, ' ')}</span>
+        <span class="persona-model">${models[name] || '(default)'}</span>
+        <span class="persona-toggle" id="toggle-${name}">&#9654;</span>
+      </div>
+      <div class="persona-body" id="body-${name}">
+        <div class="cfg-row">
+          <label>Model Override</label>
+          <input class="persona-model-input" data-name="${name}" list="model-datalist" value="${models[name] || ''}" placeholder="(uses default model)">
+        </div>
+        <textarea class="persona-editor" id="editor-${name}" placeholder="Loading..."></textarea>
+        <div class="cfg-actions">
+          <button class="btn btn-primary btn-small" onclick="savePersona('${name}')">Save Persona</button>
+          <span id="persona-status-${name}" class="status-msg"></span>
+        </div>
+      </div>`;
+    container.appendChild(card);
+  });
+}
+
+async function togglePersona(name) {
+  const body = document.getElementById('body-' + name);
+  const toggle = document.getElementById('toggle-' + name);
+  const isOpen = body.classList.contains('open');
+  if (isOpen) {
+    body.classList.remove('open');
+    toggle.innerHTML = '&#9654;';
+  } else {
+    body.classList.add('open');
+    toggle.innerHTML = '&#9660;';
+    // Load content if empty
+    const editor = document.getElementById('editor-' + name);
+    if (editor.value === '' || editor.value === 'Loading...') {
+      const r = await fetch('/api/member/' + encodeURIComponent(name));
+      const data = await r.json();
+      editor.value = data.content || '';
+    }
+  }
+}
+
+async function savePersona(name) {
+  const status = document.getElementById('persona-status-' + name);
+  const content = document.getElementById('editor-' + name).value;
+  try {
+    const r = await fetch('/api/member/' + encodeURIComponent(name), {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ content })
+    });
+    const data = await r.json();
+    status.textContent = data.ok ? 'Saved!' : 'Error';
+    status.className = 'status-msg ' + (data.ok ? 'status-ok' : 'status-err');
+  } catch(e) {
+    status.textContent = e.message;
+    status.className = 'status-msg status-err';
+  }
+  setTimeout(() => status.textContent = '', 3000);
+
+  // Also save model assignment to config
+  await saveGeneralConfig();
+}
+</script>

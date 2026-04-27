@@ -1,0 +1,22 @@
+[general]
+default_model = "gemini/gemini-flash-latest"
+response_sentences = "4-5"
+prompt_style = "default"
+sleep_seconds = 1
+# "proxy" = OpenAI-compatible endpoint, "sdk" = litellm direct
+backend = "proxy"
+
+[proxy]
+url = "http://127.0.0.1:4000/v1"
+api_key = ""
+
+[editor]
+host = "0.0.0.0"
+port = 7700
+refresh_ms = 5000
+
+[models]
+barack_obama = "openai/gpt-5.4"
+elon_musk = "xai/grok-4-1-fast-non-reasoning"
+joe_rogan = "gemini/gemini-flash-latest"
+mao_zedong = "moonshot/kimi-k2.5"
