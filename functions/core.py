@@ -29,7 +29,7 @@ def load_config() -> dict:
     """Load config from TOML (preferred) or legacy .md fallback. Returns flat dict."""
     defaults = {
         "editor_host": "0.0.0.0",
-        "editor_port": 7700,
+        "editor_port": 11004,
         "editor_refresh_ms": 2000,
         "response_sentences": "4-5",
         "sleep_seconds": 10,

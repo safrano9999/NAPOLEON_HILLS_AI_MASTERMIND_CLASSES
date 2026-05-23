@@ -5,10 +5,10 @@ INJECT_OVERWRITE=true
 HOST=127.0.0.1
 
 # Napoleon web UI internal port
-NAPOLEON_PORT=7700
+NAPOLEON_PORT=11004
 
 # Napoleon web UI host port
-NAPOLEON_PUBLISH_PORT=7700
+NAPOLEON_PUBLISH_PORT=11004
 
 # Napoleon default LiteLLM proxy model
 NAPOLEON_LITELLM_MODEL=deepseek-v4-flash

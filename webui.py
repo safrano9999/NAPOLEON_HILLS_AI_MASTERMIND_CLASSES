@@ -27,7 +27,7 @@ MEMBERS_AI = core.MEMBERS_AI
 
 CFG = core.load_config()
 
-PORT = get_port("NAPOLEON_PORT", int(CFG.get("editor_port", 7700)))
+PORT = get_port("NAPOLEON_PORT", int(CFG.get("editor_port", 11004)))
 HOST = get("HOST") or get("EDITOR_HOST") or CFG.get("editor_host", "0.0.0.0")
 REFRESH_MS = CFG.get("editor_refresh_ms", 2000)
 
