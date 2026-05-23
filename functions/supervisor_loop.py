@@ -36,6 +36,22 @@ DEFAULT_MODEL_ENV_KEYS = ("NAPOLEON_LITELLM_MODEL", "DEFAULT_MODEL")
 
 # ── Config loading ───────────────────────────────────────────────────────────
 
+def _clean(value: str | None) -> str:
+    return (value or "").strip().strip('"').strip("'")
+
+
+def get_default_model() -> str:
+    for key in DEFAULT_MODEL_ENV_KEYS:
+        value = _clean(os.environ.get(key))
+        if value:
+            if value.startswith("litellm/"):
+                value = value.removeprefix("litellm/")
+            if value.startswith("custom/"):
+                value = value.removeprefix("custom/")
+            return value
+    return ""
+
+
 def load_config() -> dict:
     """
     Load config from mastermind_config.toml (preferred) or .md (legacy fallback).
@@ -120,22 +136,6 @@ SLEEP_SECONDS = CFG.get("sleep_seconds", 10)
 def load_env() -> dict:
     """Return current environment (already loaded by python_header)."""
     return dict(os.environ)
-
-
-def _clean(value: str | None) -> str:
-    return (value or "").strip().strip('"').strip("'")
-
-
-def get_default_model() -> str:
-    for key in DEFAULT_MODEL_ENV_KEYS:
-        value = _clean(os.environ.get(key))
-        if value:
-            if value.startswith("litellm/"):
-                value = value.removeprefix("litellm/")
-            if value.startswith("custom/"):
-                value = value.removeprefix("custom/")
-            return value
-    return ""
 
 
 # ── Member helpers ───────────────────────────────────────────────────────────
