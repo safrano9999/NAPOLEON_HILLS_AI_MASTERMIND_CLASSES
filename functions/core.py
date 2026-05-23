@@ -12,12 +12,15 @@ import tomllib
 import urllib.request
 from pathlib import Path
 
+from python_header import get  # noqa: F401 — loads config.conf/.env
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 TOML_CONFIG = BASE_DIR / "config" / "mastermind_config.toml"
 PID_FILE = BASE_DIR / "supervisor_loop.pid"
 RUN_FILE = BASE_DIR / "supervisor_loop.run"
 MEMBERS_AI = BASE_DIR / "members_ai"
 PROMPT_DIR = BASE_DIR / "PROMPT"
+DEFAULT_MODEL_ENV_KEYS = ("NAPOLEON_LITELLM_MODEL", "DEFAULT_MODEL")
 
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -46,7 +49,51 @@ def load_config() -> dict:
         cfg[f"editor_{k}"] = v
     cfg["_models"] = raw.get("models", {})
     cfg["_raw"] = raw
+    default_model = get_default_model()
+    if default_model:
+        cfg["default_model"] = default_model
     return cfg
+
+
+def _clean(value: str | None) -> str:
+    return (value or "").strip().strip('"').strip("'")
+
+
+def get_default_model() -> str:
+    for key in DEFAULT_MODEL_ENV_KEYS:
+        value = _clean(os.environ.get(key))
+        if value:
+            if value.startswith("litellm/"):
+                value = value.removeprefix("litellm/")
+            if value.startswith("custom/"):
+                value = value.removeprefix("custom/")
+            return value
+    return ""
+
+
+def openai_api_base(config_proxy_url: str = "") -> str:
+    proxy_url = _clean(config_proxy_url).rstrip("/")
+    if proxy_url:
+        return proxy_url
+
+    raw_url = _clean(os.environ.get("LITELLM_URL")).rstrip("/")
+    raw_port = _clean(os.environ.get("LITELLM_PORT"))
+    if raw_url:
+        if raw_url.endswith("/v1"):
+            raw_url = raw_url[:-3].rstrip("/")
+        if raw_port:
+            raw_url = f"{raw_url}:{raw_port}"
+        return f"{raw_url}/v1".rstrip("/")
+
+    return _clean(os.environ.get("OPENAI_API_BASE") or os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_URL")).rstrip("/")
+
+
+def openai_api_key(config_proxy_key: str = "") -> str:
+    return (
+        _clean(config_proxy_key)
+        or _clean(os.environ.get("LITELLM_API_KEY"))
+        or _clean(os.environ.get("OPENAI_API_KEY"))
+    )
 
 
 def get_config() -> dict:
@@ -55,9 +102,21 @@ def get_config() -> dict:
         return {"general": {}, "proxy": {}, "editor": {}, "models": {}}
     with open(TOML_CONFIG, "rb") as f:
         raw = tomllib.load(f)
+    general = raw.get("general", {})
+    if not isinstance(general, dict):
+        general = {}
+    default_model = get_default_model()
+    if default_model:
+        general = {**general, "default_model": default_model}
+
+    proxy = raw.get("proxy", {})
+    if not isinstance(proxy, dict):
+        proxy = {}
+    proxy = {**proxy, "url": openai_api_base(proxy.get("url", "")), "api_key": ""}
+
     return {
-        "general": raw.get("general", {}),
-        "proxy": raw.get("proxy", {}),
+        "general": general,
+        "proxy": proxy,
         "editor": raw.get("editor", {}),
         "models": raw.get("models", {}),
         "characters": list_members(),
@@ -150,10 +209,10 @@ def discover_models() -> dict:
     """Query proxy /v1/models endpoint for available models."""
     cfg = get_config()
     proxy = cfg.get("proxy", {})
-    api_base = proxy.get("url", os.environ.get("OPENAI_API_BASE", "")).strip().rstrip("/")
+    api_base = openai_api_base(proxy.get("url", ""))
     if not api_base:
         return {"models": [], "error": "No proxy URL configured"}
-    api_key = proxy.get("api_key", "") or os.environ.get("OPENAI_API_KEY", "")
+    api_key = openai_api_key(proxy.get("api_key", ""))
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -169,14 +228,14 @@ def discover_models() -> dict:
 # ── Health / Connection Check ────────────────────────────────────────────────
 
 def check_connections() -> dict:
-    """Check proxy reachability and SDK availability."""
-    result = {"proxy": None, "sdk": None}
+    """Check proxy reachability."""
+    result = {"proxy": None}
 
     cfg = get_config()
     proxy = cfg.get("proxy", {})
-    api_base = proxy.get("url", "").strip().rstrip("/")
+    api_base = openai_api_base(proxy.get("url", ""))
     if api_base:
-        api_key = proxy.get("api_key", "") or os.environ.get("OPENAI_API_KEY", "")
+        api_key = openai_api_key(proxy.get("api_key", ""))
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -189,12 +248,6 @@ def check_connections() -> dict:
             result["proxy"] = {"ok": False, "error": str(e), "url": api_base}
     else:
         result["proxy"] = {"ok": False, "error": "No proxy URL configured"}
-
-    try:
-        import litellm  # noqa: F401
-        result["sdk"] = {"ok": True, "version": getattr(litellm, "__version__", "unknown")}
-    except ImportError:
-        result["sdk"] = {"ok": False, "error": "litellm not installed"}
 
     return result
 

@@ -1,1 +1,0 @@
-../../SCRIPTS/install.py

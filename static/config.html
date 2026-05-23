@@ -45,7 +45,6 @@
     <h2>Connection Status</h2>
     <div id="check-results">
       <div class="check-row"><div class="check-dot" id="check-proxy-dot"></div><span class="check-label" id="check-proxy-label">Proxy: checking...</span></div>
-      <div class="check-row"><div class="check-dot" id="check-sdk-dot"></div><span class="check-label" id="check-sdk-label">SDK (litellm): checking...</span></div>
     </div>
     <button class="btn btn-secondary btn-small" onclick="runChecks()" style="margin-top:8px">Recheck</button>
   </div>
@@ -56,13 +55,6 @@
     <div class="cfg-row"><label>Default Model</label><input id="cfg-default-model" list="model-datalist" placeholder="e.g. gemini/gemini-flash-latest"></div>
     <div class="cfg-row"><label>Response Sentences</label><input id="cfg-response-sentences" placeholder="e.g. 4-5"></div>
     <div class="cfg-row"><label>Sleep Seconds</label><input id="cfg-sleep-seconds" type="number" step="0.5" min="0"></div>
-    <div class="cfg-row">
-      <label>Backend</label>
-      <select id="cfg-backend" onchange="toggleProxyFields()">
-        <option value="proxy">Proxy (OpenAI-compatible)</option>
-        <option value="sdk">SDK (litellm direct)</option>
-      </select>
-    </div>
     <div id="proxy-fields">
       <div class="cfg-row"><label>Proxy URL</label><input id="cfg-proxy-url" placeholder="http://127.0.0.1:4000/v1"></div>
       <div class="cfg-row"><label>Proxy API Key</label><input id="cfg-proxy-key" type="password" placeholder="(optional)"></div>
@@ -117,10 +109,8 @@ async function loadConfigData() {
   document.getElementById('cfg-default-model').value = g.default_model || '';
   document.getElementById('cfg-response-sentences').value = g.response_sentences || '4-5';
   document.getElementById('cfg-sleep-seconds').value = g.sleep_seconds ?? 1;
-  document.getElementById('cfg-backend').value = g.backend || 'proxy';
   document.getElementById('cfg-proxy-url').value = p.url || '';
   document.getElementById('cfg-proxy-key').value = p.api_key || '';
-  toggleProxyFields();
 
   // Prompt styles
   const sel = document.getElementById('cfg-prompt-style');
@@ -137,16 +127,9 @@ async function loadConfigData() {
   buildPersonas(_configData.characters || [], _configData.models || {});
 }
 
-function toggleProxyFields() {
-  const isProxy = document.getElementById('cfg-backend').value === 'proxy';
-  document.getElementById('proxy-fields').style.display = isProxy ? 'block' : 'none';
-}
-
 async function runChecks() {
   document.getElementById('check-proxy-label').textContent = 'Proxy: checking...';
-  document.getElementById('check-sdk-label').textContent = 'SDK: checking...';
   document.getElementById('check-proxy-dot').className = 'check-dot';
-  document.getElementById('check-sdk-dot').className = 'check-dot';
 
   try {
     const r = await fetch('/api/check');
@@ -157,13 +140,6 @@ async function runChecks() {
       document.getElementById('check-proxy-label').textContent = ok
         ? `Proxy: connected (${data.proxy.models} models) — ${data.proxy.url}`
         : `Proxy: ${data.proxy.error}`;
-    }
-    if (data.sdk) {
-      const ok = data.sdk.ok;
-      document.getElementById('check-sdk-dot').className = 'check-dot ' + (ok ? 'ok' : 'err');
-      document.getElementById('check-sdk-label').innerHTML = ok
-        ? `SDK: litellm ${data.sdk.version} installed`
-        : `<span style="color:#d9534f">&#10008; SDK: litellm not found — please install litellm sdk</span> <code style="color:#888;font-size:11px">pip install litellm</code>`;
     }
   } catch(e) {
     document.getElementById('check-proxy-label').textContent = 'Check failed: ' + e.message;
@@ -189,7 +165,7 @@ async function saveGeneralConfig() {
       response_sentences: document.getElementById('cfg-response-sentences').value,
       prompt_style: document.getElementById('cfg-prompt-style').value,
       sleep_seconds: parseFloat(document.getElementById('cfg-sleep-seconds').value) || 1,
-      backend: document.getElementById('cfg-backend').value,
+      backend: 'proxy',
     },
     proxy: {
       url: document.getElementById('cfg-proxy-url').value,

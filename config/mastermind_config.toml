@@ -1,13 +1,12 @@
 [general]
-default_model = "gemini/gemini-flash-latest"
+default_model = "deepseek-v4-flash"
 response_sentences = "4-5"
 prompt_style = "default"
 sleep_seconds = 1
-# "proxy" = OpenAI-compatible endpoint, "sdk" = litellm direct
 backend = "proxy"
 
 [proxy]
-url = "http://127.0.0.1:4000/v1"
+url = ""
 api_key = ""
 
 [editor]

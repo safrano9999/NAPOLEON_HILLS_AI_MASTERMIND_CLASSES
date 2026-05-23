@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Napoleon Hill's AI Mastermind - Supervisor Loop
-Rotates through AI members, calls litellm for each matching speaker in sessions.
+Rotates through AI members and calls the configured LiteLLM proxy for each matching speaker in sessions.
 Reads configuration from .env (API keys) and mastermind_config.md (settings).
 """
 
@@ -31,6 +31,7 @@ CONFIG_FILE   = BASE_DIR / "mastermind_config.md"  # legacy fallback
 TOML_CONFIG   = BASE_DIR / "config" / "mastermind_config.toml"
 RUN_FILE      = BASE_DIR / "supervisor_loop.run"
 PROMPT_DIR    = BASE_DIR / "PROMPT"
+DEFAULT_MODEL_ENV_KEYS = ("NAPOLEON_LITELLM_MODEL", "DEFAULT_MODEL")
 
 
 # ── Config loading ───────────────────────────────────────────────────────────
@@ -57,6 +58,9 @@ def load_config() -> dict:
         for k, v in raw.get("editor", {}).items():
             cfg[f"editor_{k}"] = v
         cfg["_models"] = raw.get("models", {})
+        default_model = get_default_model()
+        if default_model:
+            cfg["default_model"] = default_model
         return cfg
 
     # Legacy fallback: parse mastermind_config.md
@@ -116,6 +120,22 @@ SLEEP_SECONDS = CFG.get("sleep_seconds", 10)
 def load_env() -> dict:
     """Return current environment (already loaded by python_header)."""
     return dict(os.environ)
+
+
+def _clean(value: str | None) -> str:
+    return (value or "").strip().strip('"').strip("'")
+
+
+def get_default_model() -> str:
+    for key in DEFAULT_MODEL_ENV_KEYS:
+        value = _clean(os.environ.get(key))
+        if value:
+            if value.startswith("litellm/"):
+                value = value.removeprefix("litellm/")
+            if value.startswith("custom/"):
+                value = value.removeprefix("custom/")
+            return value
+    return ""
 
 
 # ── Member helpers ───────────────────────────────────────────────────────────
@@ -283,16 +303,9 @@ def ensure_next_speaker_line(session: dict) -> str:
 
 # ── LLM call ─────────────────────────────────────────────────────────────────
 
-def is_kilocode_model(model: str) -> bool:
-    """Check if model is a Kilocode model (starts with kilocode/)."""
-    return model.startswith("kilocode/")
-
-
 def use_openai_compatible_api() -> bool:
-    """Route model calls through an OpenAI-compatible /v1 endpoint when backend=proxy."""
-    if CFG.get("backend") == "proxy":
-        return bool(openai_api_base())
-    return False
+    """Route model calls through an OpenAI-compatible /v1 endpoint."""
+    return bool(openai_api_base())
 
 
 def openai_api_base() -> str:
@@ -300,7 +313,25 @@ def openai_api_base() -> str:
     toml_url = CFG.get("proxy_url", "").strip().rstrip("/")
     if toml_url:
         return toml_url
-    return os.environ.get("OPENAI_API_BASE", "").strip().rstrip("/")
+
+    litellm_url = _clean(os.environ.get("LITELLM_URL")).rstrip("/")
+    litellm_port = _clean(os.environ.get("LITELLM_PORT"))
+    if litellm_url:
+        if litellm_url.endswith("/v1"):
+            litellm_url = litellm_url[:-3].rstrip("/")
+        if litellm_port:
+            litellm_url = f"{litellm_url}:{litellm_port}"
+        return f"{litellm_url}/v1".rstrip("/")
+
+    return _clean(os.environ.get("OPENAI_API_BASE") or os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_URL")).rstrip("/")
+
+
+def openai_api_key() -> str:
+    return (
+        _clean(CFG.get("proxy_api_key", ""))
+        or _clean(os.environ.get("LITELLM_API_KEY"))
+        or _clean(os.environ.get("OPENAI_API_KEY"))
+    )
 
 
 def normalize_openai_model(model: str) -> str:
@@ -310,14 +341,18 @@ def normalize_openai_model(model: str) -> str:
     """
     if model.startswith("openai/"):
         return model.split("/", 1)[1]
+    if model.startswith("litellm/"):
+        return model.split("/", 1)[1]
+    if model.startswith("custom/"):
+        return model.split("/", 1)[1]
     return model
 
 
 def call_openai_compatible(model: str, prompt: str) -> str:
     api_base = openai_api_base()
-    api_key = CFG.get("proxy_api_key", "").strip() or os.environ.get("OPENAI_API_KEY", "")
+    api_key = openai_api_key()
     if not api_base:
-        raise RuntimeError("OPENAI_API_BASE is empty")
+        raise RuntimeError("LiteLLM proxy URL is empty")
 
     payload = {
         "model": normalize_openai_model(model),
@@ -398,30 +433,8 @@ def call_llm(session: dict, speaker_name: str) -> str | None:
         print(f"  [DEBUG] Using default model: '{model}'")
 
     try:
-        if use_openai_compatible_api():
-            print(f"  [DEBUG] Using OpenAI-compatible API base: '{openai_api_base()}'")
-            raw = call_openai_compatible(model, prompt)
-        else:
-            import litellm
-
-            # Kilocode-Support: use custom api_base and api_key
-            if is_kilocode_model(model):
-                model_name = model.replace("kilocode/", "")
-                response = litellm.completion(
-                    model=f"openai/{model_name}",
-                    api_base="https://api.kilo.ai/api/gateway/",
-                    api_key=os.environ.get("KILOCODE_API_KEY"),
-                    messages=[{"role": "user", "content": prompt}],
-                    stream=False,
-                )
-            else:
-                # Normal litellm flow for other providers
-                response = litellm.completion(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    stream=False,
-                )
-            raw = response.choices[0].message.content.strip()
+        print(f"  [DEBUG] Using OpenAI-compatible API base: '{openai_api_base()}'")
+        raw = call_openai_compatible(model, prompt)
 
         raw = re.sub(r"^```json\s*", "", raw)
         raw = re.sub(r"^```\s*",     "", raw)
@@ -435,8 +448,7 @@ def call_llm(session: dict, speaker_name: str) -> str | None:
         print(f"  Raw: {raw[:200]}")
         return None
     except Exception as e:
-        backend = "OpenAI-compatible API" if use_openai_compatible_api() else "litellm"
-        print(f"  [ERROR] {backend} call failed for {speaker_name}: {e}")
+        print(f"  [ERROR] OpenAI-compatible API call failed for {speaker_name}: {e}")
         return None
 
 
@@ -538,13 +550,12 @@ def run():
                 continue
 
             # it's our turn!
-            backend = "OpenAI-compatible API" if use_openai_compatible_api() else "litellm"
-            print(f"  🎙️  Calling {backend} for {member_actual}...")
+            print(f"  🎙️  Calling OpenAI-compatible API for {member_actual}...")
             response = call_llm(session, member_actual)
             if response:
                 append_response(session, member_actual, response)
             else:
-                print(f"  [ERROR] No response from {backend} for {member_actual}. Skipping.")
+                print(f"  [ERROR] No response from OpenAI-compatible API for {member_actual}. Skipping.")
 
         # advance to next AI member
         ai_index = (ai_index + 1) % len(ai_members)
