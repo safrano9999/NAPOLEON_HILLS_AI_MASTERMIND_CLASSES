@@ -3,13 +3,11 @@ core.py — Napoleon Mastermind business logic.
 No Flask/HTTP dependencies. Returns plain dicts/lists.
 """
 
-import json
 import os
 import signal
 import subprocess
 import sys
 import tomllib
-import urllib.request
 from pathlib import Path
 
 from python_header import get  # noqa: F401 — loads config.conf/.env
@@ -94,6 +92,20 @@ def openai_api_key(config_proxy_key: str = "") -> str:
         or _clean(os.environ.get("LITELLM_API_KEY"))
         or _clean(os.environ.get("OPENAI_API_KEY"))
     )
+
+
+def openai_client(api_base: str, api_key: str = "", timeout: float = 10.0):
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise RuntimeError("Python package 'openai' is required for proxy calls.") from exc
+    return OpenAI(api_key=api_key or "not-needed", base_url=api_base, timeout=timeout)
+
+
+def proxy_model_ids(api_base: str, api_key: str = "", timeout: float = 10.0) -> list[str]:
+    client = openai_client(api_base, api_key, timeout=timeout)
+    response = client.models.list()
+    return sorted({m.id for m in response.data if getattr(m, "id", "")})
 
 
 def get_config() -> dict:
@@ -213,14 +225,8 @@ def discover_models() -> dict:
     if not api_base:
         return {"models": [], "error": "No proxy URL configured"}
     api_key = openai_api_key(proxy.get("api_key", ""))
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
     try:
-        req = urllib.request.Request(f"{api_base}/models", headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-        return {"models": sorted(m["id"] for m in body.get("data", []))}
+        return {"models": proxy_model_ids(api_base, api_key, timeout=10.0)}
     except Exception as e:
         return {"models": [], "error": str(e)}
 
@@ -236,14 +242,9 @@ def check_connections() -> dict:
     api_base = openai_api_base(proxy.get("url", ""))
     if api_base:
         api_key = openai_api_key(proxy.get("api_key", ""))
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
         try:
-            req = urllib.request.Request(f"{api_base}/models", headers=headers)
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-            result["proxy"] = {"ok": True, "models": len(body.get("data", [])), "url": api_base}
+            models = proxy_model_ids(api_base, api_key, timeout=5.0)
+            result["proxy"] = {"ok": True, "models": len(models), "url": api_base}
         except Exception as e:
             result["proxy"] = {"ok": False, "error": str(e), "url": api_base}
     else:

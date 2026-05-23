@@ -14,8 +14,6 @@ import subprocess
 import json
 import re
 import tomllib
-import urllib.request
-import urllib.error
 from pathlib import Path
 from datetime import datetime
 
@@ -334,13 +332,25 @@ def openai_api_key() -> str:
     )
 
 
+def openai_client(timeout: float = 120.0):
+    api_base = openai_api_base()
+    if not api_base:
+        raise RuntimeError("LiteLLM proxy URL is empty")
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise RuntimeError("Python package 'openai' is required for proxy calls.") from exc
+    return OpenAI(
+        api_key=openai_api_key() or "not-needed",
+        base_url=api_base,
+        timeout=timeout,
+    )
+
+
 def normalize_openai_model(model: str) -> str:
     """
-    Map existing per-persona model strings to model names accepted by an
-    OpenAI-compatible endpoint.
+    Keep LiteLLM model ids intact; only strip legacy local prefixes.
     """
-    if model.startswith("openai/"):
-        return model.split("/", 1)[1]
     if model.startswith("litellm/"):
         return model.split("/", 1)[1]
     if model.startswith("custom/"):
@@ -350,45 +360,25 @@ def normalize_openai_model(model: str) -> str:
 
 def call_openai_compatible(model: str, prompt: str) -> str:
     api_base = openai_api_base()
-    api_key = openai_api_key()
     if not api_base:
         raise RuntimeError("LiteLLM proxy URL is empty")
 
-    payload = {
-        "model": normalize_openai_model(model),
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": False,
-    }
-
-    headers = {
-        "Content-Type": "application/json",
-    }
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
-    request = urllib.request.Request(
-        url=f"{api_base}/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers=headers,
-        method="POST",
-    )
+    try:
+        response = openai_client(timeout=120.0).chat.completions.create(
+            model=normalize_openai_model(model),
+            messages=[{"role": "user", "content": prompt}],
+            stream=False,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"OpenAI-compatible API error from {api_base}/chat/completions: {exc}") from exc
 
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
-            body = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        error_body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"OpenAI-compatible API error {exc.code} from {api_base}/chat/completions: {error_body[:400]}"
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Could not reach OpenAI-compatible API at {api_base}: {exc}") from exc
-
-    parsed = json.loads(body)
-    try:
-        return parsed["choices"][0]["message"]["content"].strip()
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError(f"Unexpected OpenAI-compatible response: {body[:400]}") from exc
+        content = response.choices[0].message.content
+    except (AttributeError, IndexError, TypeError) as exc:
+        raise RuntimeError(f"Unexpected OpenAI-compatible response: {response!r}") from exc
+    if isinstance(content, list):
+        content = "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in content)
+    return (content or "").strip()
 
 
 def call_llm(session: dict, speaker_name: str) -> str | None:
