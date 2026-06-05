@@ -1,0 +1,141 @@
+name: Napoleon container image
+
+on:
+  push:
+    tags:
+      - "20*.*.*"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Docker image tag to publish. Empty uses YYYY.M.D."
+        required: false
+        default: ""
+      push_latest:
+        description: "Also publish the Docker image as :latest."
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DOCKER_NAMESPACE: safrano9999
+      DOCKER_REPOSITORY: napoleon-hills-ai-mastermind-classes
+      IMAGE_NAME: docker.io/safrano9999/napoleon-hills-ai-mastermind-classes
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve tags
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            version="${{ inputs.image_tag }}"
+            if [ -z "$version" ]; then
+              version="$(date +%Y.%-m.%-d)"
+            fi
+          fi
+          {
+            echo "version=$version"
+            echo "tags<<EOF"
+            echo "${IMAGE_NAME}:${version}"
+            if [ "${{ github.event_name == 'push' || inputs.push_latest }}" = "true" ]; then
+              echo "${IMAGE_NAME}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Try to ensure Docker Hub repository is private
+        continue-on-error: true
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          login_payload="$(jq -nc \
+            --arg username "$DOCKERHUB_USERNAME" \
+            --arg password "$DOCKERHUB_TOKEN" \
+            '{username:$username,password:$password}')"
+          token="$(curl -fsS \
+            -H 'Content-Type: application/json' \
+            -d "$login_payload" \
+            https://hub.docker.com/v2/users/login/ | jq -r '.token')"
+          [ -n "$token" ] && [ "$token" != "null" ]
+
+          repo_url="https://hub.docker.com/v2/repositories/${DOCKER_NAMESPACE}/${DOCKER_REPOSITORY}/"
+          status="$(curl -sS -o /tmp/dockerhub-repo.json -w '%{http_code}' \
+            -H "Authorization: JWT $token" \
+            "$repo_url")"
+
+          if [ "$status" = "404" ]; then
+            create_payload="$(jq -nc \
+              --arg namespace "$DOCKER_NAMESPACE" \
+              --arg name "$DOCKER_REPOSITORY" \
+              --arg description "Napoleon Mastermind standalone Fedora container" \
+              '{namespace:$namespace,name:$name,description:$description,full_description:$description,is_private:true}')"
+            curl -fsS \
+              -X POST \
+              -H "Authorization: JWT $token" \
+              -H 'Content-Type: application/json' \
+              -d "$create_payload" \
+              https://hub.docker.com/v2/repositories/ >/dev/null
+          elif [ "$status" != "200" ]; then
+            cat /tmp/dockerhub-repo.json
+            exit 1
+          fi
+
+          curl -fsS \
+            -X PATCH \
+            -H "Authorization: JWT $token" \
+            -H 'Content-Type: application/json' \
+            -d '{"is_private":true}' \
+            "$repo_url" >/dev/null
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Containerfile
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+
+      - name: Try to keep Docker Hub repository private
+        continue-on-error: true
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          login_payload="$(jq -nc \
+            --arg username "$DOCKERHUB_USERNAME" \
+            --arg password "$DOCKERHUB_TOKEN" \
+            '{username:$username,password:$password}')"
+          token="$(curl -fsS \
+            -H 'Content-Type: application/json' \
+            -d "$login_payload" \
+            https://hub.docker.com/v2/users/login/ | jq -r '.token')"
+          curl -fsS \
+            -X PATCH \
+            -H "Authorization: JWT $token" \
+            -H 'Content-Type: application/json' \
+            -d '{"is_private":true}' \
+            "https://hub.docker.com/v2/repositories/${DOCKER_NAMESPACE}/${DOCKER_REPOSITORY}/" >/dev/null

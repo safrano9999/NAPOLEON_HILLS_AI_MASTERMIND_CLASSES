@@ -1,2 +1,5 @@
 python-dotenv
 openai
+fastapi
+uvicorn[standard]
+jinja2
