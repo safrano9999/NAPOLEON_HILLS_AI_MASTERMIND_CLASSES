@@ -37,7 +37,7 @@ Direct LiteLLM SDK mode is intentionally not used.
 
 ```bash
 python3 -m pip install -r requirements.txt
-uvicorn webui:app --host "$HOST" --port "$NAPOLEON_PORT"
+uvicorn webui:app --host "$FASTAPI_HOST" --port "$NAPOLEON_PORT"
 ```
 
 In the Fedora container this repo is started by `napoleon.service`.

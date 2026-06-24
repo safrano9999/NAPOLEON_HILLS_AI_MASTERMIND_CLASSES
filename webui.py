@@ -28,7 +28,7 @@ MEMBERS_AI = core.MEMBERS_AI
 CFG = core.load_config()
 
 PORT = get_port("NAPOLEON_PORT", int(CFG.get("editor_port", 11004)))
-HOST = get("HOST") or get("EDITOR_HOST") or CFG.get("editor_host", "0.0.0.0")
+SERVER_HOST = get("FASTAPI_HOST") or CFG.get("editor_host", "0.0.0.0")
 REFRESH_MS = CFG.get("editor_refresh_ms", 2000)
 
 # Folders to show in sidebar (in order)
@@ -489,8 +489,8 @@ def api_loop_stop():
 
 
 if __name__ == "__main__":
-    print(f"[mastermind_web] http://{HOST}:{PORT}")
+    print(f"[mastermind_web] http://{SERVER_HOST}:{PORT}")
     print(f"[mastermind_web] root: {BASE_DIR}")
     print(f"[mastermind_web] Config: {'found' if TOML_CONFIG.exists() else 'not found'}")
     print(f"[mastermind_web] Refresh: {REFRESH_MS}ms")
-    uvicorn.run(app, host=HOST, port=PORT)
+    uvicorn.run(app, host=SERVER_HOST, port=PORT)
