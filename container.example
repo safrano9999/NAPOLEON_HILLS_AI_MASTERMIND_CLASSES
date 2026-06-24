@@ -1,0 +1,5 @@
+# Napoleon web UI host port
+NAPOLEON_PUBLISH_PORT=11004
+
+# BLANK = ephemeral; mount-bind Volumes for Napoleon personas and sessions (example: ./members_ai:/opt/safrano9999/NAPOLEON_HILLS_AI_MASTERMIND_CLASSES/members_ai:Z,./members:/opt/safrano9999/NAPOLEON_HILLS_AI_MASTERMIND_CLASSES/members:Z,./sessions:/opt/safrano9999/NAPOLEON_HILLS_AI_MASTERMIND_CLASSES/sessions:Z)
+NAPOLEON_VOLUMES=
