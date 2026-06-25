@@ -18,13 +18,13 @@ PID_FILE = BASE_DIR / "supervisor_loop.pid"
 RUN_FILE = BASE_DIR / "supervisor_loop.run"
 MEMBERS_AI = BASE_DIR / "members_ai"
 PROMPT_DIR = BASE_DIR / "PROMPT"
-DEFAULT_MODEL_ENV_KEYS = ("NAPOLEON_LITELLM_MODEL", "DEFAULT_MODEL")
+DEFAULT_LLM_ENV_KEY = "NAPOLEON_LITELLM_DEFAULT_LLM"
 
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
 def load_config() -> dict:
-    """Load config from TOML (preferred) or legacy .md fallback. Returns flat dict."""
+    """Load config from TOML and env overrides. Returns flat dict."""
     defaults = {
         "editor_host": "0.0.0.0",
         "editor_port": 11004,
@@ -41,8 +41,6 @@ def load_config() -> dict:
         raw = tomllib.load(f)
     cfg = {**defaults}
     cfg.update(raw.get("general", {}))
-    cfg["proxy_url"] = raw.get("proxy", {}).get("url", "")
-    cfg["proxy_api_key"] = raw.get("proxy", {}).get("api_key", "")
     for k, v in raw.get("editor", {}).items():
         cfg[f"editor_{k}"] = v
     cfg["_models"] = raw.get("models", {})
@@ -58,22 +56,10 @@ def _clean(value: str | None) -> str:
 
 
 def get_default_model() -> str:
-    for key in DEFAULT_MODEL_ENV_KEYS:
-        value = _clean(os.environ.get(key))
-        if value:
-            if value.startswith("litellm/"):
-                value = value.removeprefix("litellm/")
-            if value.startswith("custom/"):
-                value = value.removeprefix("custom/")
-            return value
-    return ""
+    return _clean(os.environ.get(DEFAULT_LLM_ENV_KEY))
 
 
-def openai_api_base(config_proxy_url: str = "") -> str:
-    proxy_url = _clean(config_proxy_url).rstrip("/")
-    if proxy_url:
-        return proxy_url
-
+def openai_api_base() -> str:
     raw_url = _clean(os.environ.get("LITELLM_URL")).rstrip("/")
     raw_port = _clean(os.environ.get("LITELLM_PORT"))
     if raw_url:
@@ -82,16 +68,11 @@ def openai_api_base(config_proxy_url: str = "") -> str:
         if raw_port:
             raw_url = f"{raw_url}:{raw_port}"
         return f"{raw_url}/v1".rstrip("/")
+    return ""
 
-    return _clean(os.environ.get("OPENAI_API_BASE") or os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_URL")).rstrip("/")
 
-
-def openai_api_key(config_proxy_key: str = "") -> str:
-    return (
-        _clean(config_proxy_key)
-        or _clean(os.environ.get("LITELLM_API_KEY"))
-        or _clean(os.environ.get("OPENAI_API_KEY"))
-    )
+def openai_api_key() -> str:
+    return _clean(os.environ.get("LITELLM_API_KEY"))
 
 
 def openai_client(api_base: str, api_key: str = "", timeout: float = 10.0):
@@ -121,14 +102,9 @@ def get_config() -> dict:
     if default_model:
         general = {**general, "default_model": default_model}
 
-    proxy = raw.get("proxy", {})
-    if not isinstance(proxy, dict):
-        proxy = {}
-    proxy = {**proxy, "url": openai_api_base(proxy.get("url", "")), "api_key": ""}
-
     return {
         "general": general,
-        "proxy": proxy,
+        "proxy": {"url": openai_api_base(), "api_key": ""},
         "editor": raw.get("editor", {}),
         "models": raw.get("models", {}),
         "characters": list_members(),
@@ -140,7 +116,6 @@ def save_config(data: dict) -> bool:
     """Write config dict to TOML."""
     toml_dict = {
         "general": data.get("general", {}),
-        "proxy": data.get("proxy", {}),
         "editor": data.get("editor", {}),
         "models": data.get("models", {}),
     }
@@ -219,14 +194,11 @@ def save_prompt(name: str, content: str) -> dict:
 
 def discover_models() -> dict:
     """Query proxy /v1/models endpoint for available models."""
-    cfg = get_config()
-    proxy = cfg.get("proxy", {})
-    api_base = openai_api_base(proxy.get("url", ""))
+    api_base = openai_api_base()
     if not api_base:
         return {"models": [], "error": "No proxy URL configured"}
-    api_key = openai_api_key(proxy.get("api_key", ""))
     try:
-        return {"models": proxy_model_ids(api_base, api_key, timeout=10.0)}
+        return {"models": proxy_model_ids(api_base, openai_api_key(), timeout=10.0)}
     except Exception as e:
         return {"models": [], "error": str(e)}
 
@@ -237,13 +209,10 @@ def check_connections() -> dict:
     """Check proxy reachability."""
     result = {"proxy": None}
 
-    cfg = get_config()
-    proxy = cfg.get("proxy", {})
-    api_base = openai_api_base(proxy.get("url", ""))
+    api_base = openai_api_base()
     if api_base:
-        api_key = openai_api_key(proxy.get("api_key", ""))
         try:
-            models = proxy_model_ids(api_base, api_key, timeout=5.0)
+            models = proxy_model_ids(api_base, openai_api_key(), timeout=5.0)
             result["proxy"] = {"ok": True, "models": len(models), "url": api_base}
         except Exception as e:
             result["proxy"] = {"ok": False, "error": str(e), "url": api_base}

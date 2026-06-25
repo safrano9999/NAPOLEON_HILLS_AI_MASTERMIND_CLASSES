@@ -2,7 +2,7 @@
 """
 Napoleon Hill's AI Mastermind - Supervisor Loop
 Rotates through AI members and calls the configured LiteLLM proxy for each matching speaker in sessions.
-Reads configuration from .env (API keys) and mastermind_config.md (settings).
+Reads configuration from config/mastermind_config.toml, config.conf, and .env.
 """
 
 from python_header import get  # noqa: F401 — loads .env
@@ -25,11 +25,10 @@ MEMBERS_HUMAN = BASE_DIR / "members"
 MEMBERS_AGENT = BASE_DIR / "members_agents"
 SESSIONS_DIR  = BASE_DIR / "sessions"
 RULES_FILE    = BASE_DIR / "rules.md"
-CONFIG_FILE   = BASE_DIR / "mastermind_config.md"  # legacy fallback
 TOML_CONFIG   = BASE_DIR / "config" / "mastermind_config.toml"
 RUN_FILE      = BASE_DIR / "supervisor_loop.run"
 PROMPT_DIR    = BASE_DIR / "PROMPT"
-DEFAULT_MODEL_ENV_KEYS = ("NAPOLEON_LITELLM_MODEL", "DEFAULT_MODEL")
+DEFAULT_LLM_ENV_KEY = "NAPOLEON_LITELLM_DEFAULT_LLM"
 
 
 # ── Config loading ───────────────────────────────────────────────────────────
@@ -39,21 +38,12 @@ def _clean(value: str | None) -> str:
 
 
 def get_default_model() -> str:
-    for key in DEFAULT_MODEL_ENV_KEYS:
-        value = _clean(os.environ.get(key))
-        if value:
-            if value.startswith("litellm/"):
-                value = value.removeprefix("litellm/")
-            if value.startswith("custom/"):
-                value = value.removeprefix("custom/")
-            return value
-    return ""
+    return _clean(os.environ.get(DEFAULT_LLM_ENV_KEY))
 
 
 def load_config() -> dict:
     """
-    Load config from mastermind_config.toml (preferred) or .md (legacy fallback).
-    Returns flat dict with defaults for missing values.
+    Load config from mastermind_config.toml and env overrides.
     """
     defaults = {
         "sleep_seconds": 0.5,
@@ -67,8 +57,6 @@ def load_config() -> dict:
             raw = tomllib.load(f)
         cfg = {**defaults}
         cfg.update(raw.get("general", {}))
-        cfg["proxy_url"] = raw.get("proxy", {}).get("url", "")
-        cfg["proxy_api_key"] = raw.get("proxy", {}).get("api_key", "")
         for k, v in raw.get("editor", {}).items():
             cfg[f"editor_{k}"] = v
         cfg["_models"] = raw.get("models", {})
@@ -77,31 +65,10 @@ def load_config() -> dict:
             cfg["default_model"] = default_model
         return cfg
 
-    # Legacy fallback: parse mastermind_config.md
-    allowed_keys = set(defaults) | {"default_model"}
-    if not CONFIG_FILE.exists():
-        print("[INFO] No config file found, using defaults.")
-        return defaults
-
-    cfg = {}
-    for line in CONFIG_FILE.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or line.startswith("-") or line.startswith("*"):
-            continue
-        if line == "---":
-            continue
-        if ":" in line and not line.startswith("http"):
-            k, _, v = line.partition(":")
-            k = k.strip().lower().replace(" ", "_")
-            v = v.strip().strip('"').strip("'")
-            if k in allowed_keys:
-                if v.replace(".", "", 1).isdigit():
-                    v = float(v) if "." in v else int(v)
-                elif v.lower() in ("true", "false"):
-                    v = v.lower() == "true"
-                cfg[k] = v
-
-    return {**defaults, **cfg}
+    default_model = get_default_model()
+    if default_model:
+        defaults["default_model"] = default_model
+    return defaults
 
 
 def reload_config():
@@ -307,11 +274,6 @@ def use_openai_compatible_api() -> bool:
 
 
 def openai_api_base() -> str:
-    # TOML proxy.url takes precedence over env var
-    toml_url = CFG.get("proxy_url", "").strip().rstrip("/")
-    if toml_url:
-        return toml_url
-
     litellm_url = _clean(os.environ.get("LITELLM_URL")).rstrip("/")
     litellm_port = _clean(os.environ.get("LITELLM_PORT"))
     if litellm_url:
@@ -320,16 +282,11 @@ def openai_api_base() -> str:
         if litellm_port:
             litellm_url = f"{litellm_url}:{litellm_port}"
         return f"{litellm_url}/v1".rstrip("/")
-
-    return _clean(os.environ.get("OPENAI_API_BASE") or os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_URL")).rstrip("/")
+    return ""
 
 
 def openai_api_key() -> str:
-    return (
-        _clean(CFG.get("proxy_api_key", ""))
-        or _clean(os.environ.get("LITELLM_API_KEY"))
-        or _clean(os.environ.get("OPENAI_API_KEY"))
-    )
+    return _clean(os.environ.get("LITELLM_API_KEY"))
 
 
 def openai_client(timeout: float = 120.0):
@@ -347,17 +304,6 @@ def openai_client(timeout: float = 120.0):
     )
 
 
-def normalize_openai_model(model: str) -> str:
-    """
-    Keep LiteLLM model ids intact; only strip legacy local prefixes.
-    """
-    if model.startswith("litellm/"):
-        return model.split("/", 1)[1]
-    if model.startswith("custom/"):
-        return model.split("/", 1)[1]
-    return model
-
-
 def call_openai_compatible(model: str, prompt: str) -> str:
     api_base = openai_api_base()
     if not api_base:
@@ -365,7 +311,7 @@ def call_openai_compatible(model: str, prompt: str) -> str:
 
     try:
         response = openai_client(timeout=120.0).chat.completions.create(
-            model=normalize_openai_model(model),
+            model=model,
             messages=[{"role": "user", "content": prompt}],
             stream=False,
         )
@@ -415,7 +361,7 @@ def call_llm(session: dict, speaker_name: str) -> str | None:
     model = persona_model if persona_model else CFG.get("default_model")
 
     if not model:
-        raise RuntimeError("Missing default_model in mastermind_config.md")
+        raise RuntimeError("Missing default model. Set NAPOLEON_LITELLM_DEFAULT_LLM in config.conf.")
 
     if persona_model:
         print(f"  [DEBUG] Using persona model: '{model}'")

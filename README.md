@@ -29,7 +29,7 @@ The LLM backend is always an OpenAI-compatible LiteLLM proxy:
 - `LITELLM_URL`
 - `LITELLM_PORT`
 - `LITELLM_API_KEY`
-- `NAPOLEON_LITELLM_MODEL`
+- `NAPOLEON_LITELLM_DEFAULT_LLM`
 
 Direct LiteLLM SDK mode is intentionally not used.
 

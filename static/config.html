@@ -55,10 +55,6 @@
     <div class="cfg-row"><label>Default Model</label><input id="cfg-default-model" list="model-datalist" placeholder="e.g. gemini/gemini-flash-latest"></div>
     <div class="cfg-row"><label>Response Sentences</label><input id="cfg-response-sentences" placeholder="e.g. 4-5"></div>
     <div class="cfg-row"><label>Sleep Seconds</label><input id="cfg-sleep-seconds" type="number" step="0.5" min="0"></div>
-    <div id="proxy-fields">
-      <div class="cfg-row"><label>Proxy URL</label><input id="cfg-proxy-url" placeholder="http://127.0.0.1:4000/v1"></div>
-      <div class="cfg-row"><label>Proxy API Key</label><input id="cfg-proxy-key" type="password" placeholder="(optional)"></div>
-    </div>
     <div class="cfg-actions">
       <button class="btn btn-primary" onclick="saveGeneralConfig()">Save Settings</button>
       <span id="cfg-save-status" class="status-msg"></span>
@@ -104,13 +100,10 @@ async function loadConfigData() {
   const r = await fetch('/api/config');
   _configData = await r.json();
   const g = _configData.general || {};
-  const p = _configData.proxy || {};
 
   document.getElementById('cfg-default-model').value = g.default_model || '';
   document.getElementById('cfg-response-sentences').value = g.response_sentences || '4-5';
   document.getElementById('cfg-sleep-seconds').value = g.sleep_seconds ?? 1;
-  document.getElementById('cfg-proxy-url').value = p.url || '';
-  document.getElementById('cfg-proxy-key').value = p.api_key || '';
 
   // Prompt styles
   const sel = document.getElementById('cfg-prompt-style');
@@ -166,10 +159,6 @@ async function saveGeneralConfig() {
       prompt_style: document.getElementById('cfg-prompt-style').value,
       sleep_seconds: parseFloat(document.getElementById('cfg-sleep-seconds').value) || 1,
       backend: 'proxy',
-    },
-    proxy: {
-      url: document.getElementById('cfg-proxy-url').value,
-      api_key: document.getElementById('cfg-proxy-key').value,
     },
     editor: _configData.editor || {},
     models: collectModels(),

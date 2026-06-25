@@ -5,4 +5,4 @@ FASTAPI_HOST=127.0.0.1
 NAPOLEON_PORT=11004
 
 # Napoleon default LiteLLM proxy model
-NAPOLEON_LITELLM_MODEL=deepseek-v4-flash
+NAPOLEON_LITELLM_DEFAULT_LLM=deepseek-v4-flash
