@@ -12,6 +12,10 @@ node_modules/
 build/
 dist/
 *.log
+*.db
+*.sqlite
+*.sqlite3
+STATE/
 supervisor_loop.run
 supervisor_loop.pid
 .claude/

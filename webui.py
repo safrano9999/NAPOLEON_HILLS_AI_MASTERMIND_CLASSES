@@ -23,7 +23,6 @@ import core
 
 BASE_DIR = core.BASE_DIR
 TOML_CONFIG = core.TOML_CONFIG
-MEMBERS_AI = core.MEMBERS_AI
 
 CFG = core.load_config()
 
@@ -55,9 +54,11 @@ HTML = """<!DOCTYPE html>
   #sidebar { width: 260px; min-width: 260px; background: #1a1a1a; border-right: 1px solid #333; display: flex; flex-direction: column; overflow-y: auto; }
   #sidebar-title { padding: 14px 16px; font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 2px; border-bottom: 1px solid #333; }
   #loop-controls { padding: 12px 16px; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  #start-loop-btn, #stop-loop-btn { padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-family: inherit; }
+  #start-loop-btn, #stop-loop-btn, #import-btn, #export-btn { padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-family: inherit; }
   #start-loop-btn { background: #3f6b3f; color: #fff; }
   #stop-loop-btn { background: #7a3535; color: #fff; }
+  #import-btn, #export-btn { background: #333; color: #ddd; }
+  #import-btn:hover, #export-btn:hover { background: #444; }
   #start-loop-btn:disabled, #stop-loop-btn:disabled { opacity: 0.5; cursor: default; }
   #loop-status { font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 1px; }
 
@@ -102,6 +103,8 @@ HTML = """<!DOCTYPE html>
   <div id="loop-controls">
     <button id="start-loop-btn" onclick="startLoop()">Start</button>
     <button id="stop-loop-btn" onclick="stopLoop()">Stop</button>
+    <button id="import-btn" onclick="importPresets()" title="Import repo presets into SQL">Import</button>
+    <button id="export-btn" onclick="exportPresets()" title="Export SQL documents into repo files">Export</button>
     <span id="loop-status">checking...</span>
   </div>
   <div id="tree"></div>
@@ -168,6 +171,25 @@ async function startLoop() {
 async function stopLoop() {
   const r = await fetch('/api/loop/stop', { method: 'POST' });
   updateLoopUi(await r.json());
+}
+
+async function importPresets() {
+  if (!confirm('Replace SQL documents with repo presets?')) return;
+  const r = await fetch('/api/storage/import', { method: 'POST' });
+  const data = await r.json();
+  const status = document.getElementById('status');
+  status.textContent = data.ok ? `imported ${data.imported || 0}` : 'import error';
+  status.style.color = data.ok ? '#5cb85c' : '#d9534f';
+  await loadTree();
+  if (currentFile) await refreshCurrentFile();
+}
+
+async function exportPresets() {
+  const r = await fetch('/api/storage/export', { method: 'POST' });
+  const data = await r.json();
+  const status = document.getElementById('status');
+  status.textContent = data.ok ? `exported ${data.exported || 0}` : 'export error';
+  status.style.color = data.ok ? '#5cb85c' : '#d9534f';
 }
 
 function isAtBottom(el) {
@@ -363,17 +385,16 @@ def tree():
 
     # Config files (special section at top)
     config_files = []
-    if TOML_CONFIG.exists():
+    if core.file_exists("config/mastermind_config.toml"):
         config_files.append("config/mastermind_config.toml")
     result["config"] = config_files
 
     # Standard folders
     for folder in FOLDERS_CONFIG:
-        d = BASE_DIR / folder
-        result[folder] = sorted(p.name for p in d.glob("*.md")) if d.exists() else []
+        result[folder] = core.list_folder(folder)
 
     # Root .md files
-    root_mds = sorted(p.name for p in BASE_DIR.glob("*.md"))
+    root_mds = core.list_root_markdown()
     if root_mds:
         result["root"] = root_mds
 
@@ -382,25 +403,23 @@ def tree():
 
 @app.get("/api/file/{filepath:path}")
 def get_file(filepath: str):
-    path = (BASE_DIR / filepath).resolve()
-    if not path.is_relative_to(BASE_DIR):
+    result = core.get_file(filepath)
+    if result.get("error") == "forbidden":
         return JSONResponse({"error": "forbidden"}, status_code=403)
-    if not path.exists() or path.suffix not in (".md", ".toml"):
+    if "error" in result:
         return JSONResponse({"error": "not found"}, status_code=404)
-    return {"content": path.read_text()}
+    return result
 
 
 @app.post("/api/file/{filepath:path}")
 async def save_file(filepath: str, request: Request):
-    path = (BASE_DIR / filepath).resolve()
-    if not path.is_relative_to(BASE_DIR):
-        return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
-    if path.suffix not in (".md", ".toml"):
-        return JSONResponse({"ok": False, "error": "only .md/.toml allowed"}, status_code=400)
-    path.parent.mkdir(parents=True, exist_ok=True)
     data = await request.json()
-    path.write_text(data.get("content", ""))
-    return {"ok": True}
+    result = core.save_file(filepath, data.get("content", ""))
+    if result.get("error") == "forbidden":
+        return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
+    if "error" in result:
+        return JSONResponse({"ok": False, "error": result["error"]}, status_code=400)
+    return result
 
 
 _ASSETS_DIR = BASE_DIR / "assets"
@@ -473,6 +492,16 @@ def api_check_deps():
     return core.check_connections()
 
 
+@app.post("/api/storage/import")
+def api_storage_import():
+    return core.import_presets(force=True)
+
+
+@app.post("/api/storage/export")
+def api_storage_export():
+    return core.export_presets()
+
+
 @app.get("/api/loop/status")
 def api_loop_status():
     return core.loop_status()
@@ -491,6 +520,6 @@ def api_loop_stop():
 if __name__ == "__main__":
     print(f"[mastermind_web] http://{SERVER_HOST}:{PORT}")
     print(f"[mastermind_web] root: {BASE_DIR}")
-    print(f"[mastermind_web] Config: {'found' if TOML_CONFIG.exists() else 'not found'}")
+    print(f"[mastermind_web] Config: {'found' if core.file_exists('config/mastermind_config.toml') else 'not found'}")
     print(f"[mastermind_web] Refresh: {REFRESH_MS}ms")
     uvicorn.run(app, host=SERVER_HOST, port=PORT)

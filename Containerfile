@@ -25,6 +25,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
  && chmod +x /usr/local/bin/uvicorn
 
 COPY webui.py ./
+COPY import.py ./
 COPY config.conf_example env.example ./
 COPY config ./config
 COPY functions ./functions

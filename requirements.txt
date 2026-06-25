@@ -3,3 +3,6 @@ openai
 fastapi
 uvicorn[standard]
 jinja2
+sqlalchemy
+psycopg[binary]
+pymysql

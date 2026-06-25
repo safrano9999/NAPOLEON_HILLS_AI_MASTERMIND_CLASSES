@@ -16,6 +16,7 @@ import re
 import tomllib
 from pathlib import Path
 from datetime import datetime
+import storage
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 # Project root is one level above functions/
@@ -26,9 +27,12 @@ MEMBERS_AGENT = BASE_DIR / "members_agents"
 SESSIONS_DIR  = BASE_DIR / "sessions"
 RULES_FILE    = BASE_DIR / "rules.md"
 TOML_CONFIG   = BASE_DIR / "config" / "mastermind_config.toml"
+CONFIG_DOCUMENT = "config/mastermind_config.toml"
 RUN_FILE      = BASE_DIR / "supervisor_loop.run"
 PROMPT_DIR    = BASE_DIR / "PROMPT"
 DEFAULT_LLM_ENV_KEY = "NAPOLEON_OPENAI_V1_DEFAULT_LLM"
+
+storage.import_if_empty()
 
 
 # ── Config loading ───────────────────────────────────────────────────────────
@@ -52,9 +56,9 @@ def load_config() -> dict:
         "backend": "proxy",
     }
 
-    if TOML_CONFIG.exists():
-        with open(TOML_CONFIG, "rb") as f:
-            raw = tomllib.load(f)
+    content = storage.read_document(CONFIG_DOCUMENT)
+    if content is not None:
+        raw = tomllib.loads(content)
         cfg = {**defaults}
         cfg.update(raw.get("general", {}))
         for k, v in raw.get("editor", {}).items():
@@ -107,34 +111,30 @@ def load_env() -> dict:
 
 def get_ai_members() -> list[str]:
     """Return sorted list of AI member names (filenames without .md)."""
-    if not MEMBERS_AI.exists():
-        return []
-    return sorted(p.stem for p in MEMBERS_AI.glob("*.md"))
+    return storage.list_document_stems("members_ai")
 
 
 def get_human_members() -> list[str]:
-    if not MEMBERS_HUMAN.exists():
-        return []
-    return sorted(p.stem for p in MEMBERS_HUMAN.glob("*.md"))
+    return storage.list_document_stems("members")
 
 
 def member_exists(name: str) -> bool:
     """Check if a member MD file exists in any members folder."""
-    for folder in [MEMBERS_AI, MEMBERS_HUMAN, MEMBERS_AGENT]:
-        if (folder / f"{name}.md").exists():
+    for folder in ["members_ai", "members", "members_agents"]:
+        if storage.document_exists(f"{folder}/{name}.md"):
             return True
     return False
 
 
 def is_human(name: str) -> bool:
-    return (MEMBERS_HUMAN / f"{name}.md").exists()
+    return storage.document_exists(f"members/{name}.md")
 
 
 def read_member_md(name: str) -> str:
-    for folder in [MEMBERS_AI, MEMBERS_HUMAN, MEMBERS_AGENT]:
-        p = folder / f"{name}.md"
-        if p.exists():
-            return p.read_text()
+    for folder in ["members_ai", "members", "members_agents"]:
+        content = storage.read_document(f"{folder}/{name}.md")
+        if content is not None:
+            return content
     return ""
 
 
@@ -161,17 +161,18 @@ def get_member_model(name: str) -> str | None:
 
 # ── Session parsing ──────────────────────────────────────────────────────────
 
-def parse_session(path: Path) -> dict | None:
+def parse_session(path: str) -> dict | None:
     """
     Parse a session MD file.
     Returns dict with keys: title, members, thesis, speakers, last_speaker, content
     or None on hard error.
     """
-    text = path.read_text().replace('\r', '')
+    text = (storage.read_document(path) or "").replace('\r', '')
     lines = text.splitlines()
+    name = Path(path).name
 
     if len(lines) < 2:
-        print(f"[ERROR] {path.name}: File too short.")
+        print(f"[ERROR] {name}: File too short.")
         return None
 
     title = lines[0].lstrip("# ").strip()
@@ -183,7 +184,7 @@ def parse_session(path: Path) -> dict | None:
             members_line = line
             break
     if not members_line:
-        print(f"[ERROR] {path.name}: No 'members:' line found.")
+        print(f"[ERROR] {name}: No 'members:' line found.")
         return None
 
     raw_members = members_line.split(":", 1)[1]
@@ -201,7 +202,7 @@ def parse_session(path: Path) -> dict | None:
     speakers_found = [m.group(1).strip() for l in lines if (m := speaker_pattern.match(l))]
 
     if not speakers_found:
-        print(f"[ERROR] {path.name}: No 'speaker:' found. Please initiate the conversation.")
+        print(f"[ERROR] {name}: No 'speaker:' found. Please initiate the conversation.")
         return None
 
     last_speaker = speakers_found[-1]
@@ -223,7 +224,7 @@ def validate_members(session: dict) -> bool:
     all_ok = True
     for name in session["members"]:
         if not member_exists(name):
-            print(f"[ERROR] {session['path'].name}: Member '{name}' has no MD file in members_ai/, members/, or members_agents/.")
+            print(f"[ERROR] {Path(session['path']).name}: Member '{name}' has no MD file in members_ai/, members/, or members_agents/.")
             all_ok = False
     return all_ok
 
@@ -242,7 +243,7 @@ def ensure_next_speaker_line(session: dict) -> str:
     If not, compute next speaker and append it.
     Returns the actual_speaker name.
     """
-    path: Path = session["path"]
+    path = session["path"]
     lines = session["lines"]
 
     # find last non-empty line
@@ -260,9 +261,8 @@ def ensure_next_speaker_line(session: dict) -> str:
 
     # need to append next speaker line
     nxt = next_speaker(session["last_speaker"], session["members"])
-    with open(path, "a") as f:
-        f.write(f"\nspeaker: {nxt}\n")
-    print(f"  → Appended 'speaker: {nxt}' to {path.name}")
+    storage.append_document(path, f"\nspeaker: {nxt}\n")
+    print(f"  → Appended 'speaker: {nxt}' to {Path(path).name}")
     return nxt
 
 
@@ -320,21 +320,22 @@ def call_llm(session: dict, speaker_name: str) -> str | None:
     reload_config()
 
     persona_md   = read_member_md(speaker_name)
-    rules_text   = RULES_FILE.read_text() if RULES_FILE.exists() else ""
+    rules_text   = storage.read_document("rules.md") or ""
     session_text = session["text"]
 
     sentences = CFG.get("response_sentences", "4-5")
     style     = CFG.get("prompt_style", "default")
 
     # Load prompt template from PROMPT/<style>.md (fallback: default.md)
-    template_path = PROMPT_DIR / f"{style}.md"
-    if not template_path.exists():
+    template_path = f"PROMPT/{style}.md"
+    template = storage.read_document(template_path)
+    if template is None:
         print(f"  [WARN] Prompt style '{style}' not found, falling back to default.")
-        template_path = PROMPT_DIR / "default.md"
-    if not template_path.exists():
+        template_path = "PROMPT/default.md"
+        template = storage.read_document(template_path)
+    if template is None:
         raise RuntimeError(f"Missing prompt template: {template_path}")
 
-    template = template_path.read_text()
     prompt = template.format(
         speaker_name=speaker_name,
         persona_md=persona_md,
@@ -377,12 +378,10 @@ def call_llm(session: dict, speaker_name: str) -> str | None:
 
 def append_response(session: dict, speaker_name: str, response: str):
     """Append the speaker's response and a timestamp to the session file."""
-    path: Path = session["path"]
+    path = session["path"]
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(path, "a") as f:
-        f.write(f"{response}\n")
-        f.write(f"\n<!-- {ts} -->\n")
-    print(f"  ✅ {speaker_name} responded in {path.name}")
+    storage.append_document(path, f"{response}\n\n<!-- {ts} -->\n")
+    print(f"  ✅ {speaker_name} responded in {Path(path).name}")
 
 
 # ── Main loop ────────────────────────────────────────────────────────────────
@@ -406,7 +405,7 @@ def run():
 
     print(f"[INFO] AI members: {ai_members}")
     print(f"[INFO] Human members: {human_members}")
-    print(f"[INFO] Config file: {'found' if CONFIG_FILE.exists() else 'not found (using defaults)'}")
+    print(f"[INFO] Config document: {'found' if storage.document_exists(CONFIG_DOCUMENT) else 'not found (using defaults)'}")
     print(f"[INFO] Model: {CFG.get('default_model')}")
     print(f"[INFO] Response sentences: {CFG.get('response_sentences')}")
     print(f"[INFO] Starting mastermind loop. Sleep between cycles: {SLEEP_SECONDS}s\n")
@@ -428,8 +427,8 @@ def run():
 
         # get all session files sorted alphabetically, skip templates
         session_files = sorted(
-            p for p in SESSIONS_DIR.glob("*.md")
-            if not p.name.endswith("_template.md")
+            path for path in storage.list_document_paths("sessions")
+            if not Path(path).name.endswith("_template.md")
         )
         if not session_files:
             print("[INFO] No session files found in sessions/. Add a session MD to begin.")
@@ -439,7 +438,7 @@ def run():
                 print("\n[EXIT] Stop requested. Leaving mastermind loop.")
                 return
 
-            print(f"\n[SESSION] {session_path.name}")
+            print(f"\n[SESSION] {Path(session_path).name}")
 
             session = parse_session(session_path)
             if session is None:
@@ -453,7 +452,7 @@ def run():
 
             # validate all members exist — abort this session on error
             if not validate_members(session):
-                print(f"  [SKIP] {session_path.name}: member validation failed.")
+                print(f"  [SKIP] {Path(session_path).name}: member validation failed.")
                 continue
 
             # ensure last line is speaker: NAME → get actual_speaker

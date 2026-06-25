@@ -18,14 +18,16 @@ from python_header import (  # noqa: F401 — loads config.conf/.env
     openai_v1_provider_for_model,
     openai_v1_providers,
 )
+import storage
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TOML_CONFIG = BASE_DIR / "config" / "mastermind_config.toml"
+CONFIG_DOCUMENT = "config/mastermind_config.toml"
 PID_FILE = BASE_DIR / "supervisor_loop.pid"
 RUN_FILE = BASE_DIR / "supervisor_loop.run"
-MEMBERS_AI = BASE_DIR / "members_ai"
-PROMPT_DIR = BASE_DIR / "PROMPT"
 DEFAULT_LLM_ENV_KEY = "NAPOLEON_OPENAI_V1_DEFAULT_LLM"
+
+storage.import_if_empty()
 
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -41,11 +43,11 @@ def load_config() -> dict:
         "backend": "proxy",
     }
 
-    if not TOML_CONFIG.exists():
+    content = storage.read_document(CONFIG_DOCUMENT)
+    if content is None:
         return defaults
 
-    with open(TOML_CONFIG, "rb") as f:
-        raw = tomllib.load(f)
+    raw = tomllib.loads(content)
     cfg = {**defaults}
     cfg.update(raw.get("general", {}))
     for k, v in raw.get("editor", {}).items():
@@ -93,10 +95,10 @@ def proxy_model_ids(api_base: str, api_key: str = "", timeout: float = 10.0) -> 
 
 def get_config() -> dict:
     """Structured config for API/UI consumption."""
-    if not TOML_CONFIG.exists():
+    content = storage.read_document(CONFIG_DOCUMENT)
+    if content is None:
         return {"general": {}, "proxy": {}, "editor": {}, "models": {}}
-    with open(TOML_CONFIG, "rb") as f:
-        raw = tomllib.load(f)
+    raw = tomllib.loads(content)
     general = raw.get("general", {})
     if not isinstance(general, dict):
         general = {}
@@ -141,54 +143,91 @@ def write_toml(data: dict, path: Path):
                 escaped = str(v).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
                 lines.append(f'{k} = "{escaped}"')
         lines.append("")
-    path.write_text("\n".join(lines) + "\n")
+    storage.write_document(path.relative_to(BASE_DIR).as_posix(), "\n".join(lines) + "\n")
+
+
+# ── Document Files ───────────────────────────────────────────────────────────
+
+def list_folder(folder: str) -> list[str]:
+    return storage.list_document_names(folder)
+
+
+def list_root_markdown() -> list[str]:
+    return storage.list_root_markdown()
+
+
+def file_exists(path: str) -> bool:
+    try:
+        return storage.document_exists(path)
+    except ValueError:
+        return False
+
+
+def get_file(path: str) -> dict:
+    try:
+        content = storage.read_document(path)
+    except ValueError:
+        return {"error": "forbidden"}
+    if content is None:
+        return {"error": "not found"}
+    return {"content": content}
+
+
+def save_file(path: str, content: str) -> dict:
+    try:
+        storage.write_document(path, content)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return {"ok": True}
+
+
+def import_presets(force: bool = False) -> dict:
+    return storage.import_presets(force=force)
+
+
+def export_presets() -> dict:
+    return storage.export_to_files()
 
 
 # ── Members ─────────────────────────────────────────────────────────────────
 
 def list_members() -> list[str]:
-    if not MEMBERS_AI.exists():
-        return []
-    return sorted(p.stem for p in MEMBERS_AI.glob("*.md"))
+    return storage.list_document_stems("members_ai")
 
 
 def get_member(name: str) -> dict:
-    path = (MEMBERS_AI / f"{name}.md").resolve()
-    if not path.is_relative_to(MEMBERS_AI) or not path.exists():
+    content = storage.read_document(f"members_ai/{name}.md")
+    if content is None:
         return {"error": "not found"}
-    return {"name": name, "content": path.read_text()}
+    return {"name": name, "content": content}
 
 
 def save_member(name: str, content: str) -> dict:
-    path = (MEMBERS_AI / f"{name}.md").resolve()
-    if not path.is_relative_to(MEMBERS_AI):
+    try:
+        storage.write_document(f"members_ai/{name}.md", content)
+    except ValueError:
         return {"error": "forbidden"}
-    MEMBERS_AI.mkdir(parents=True, exist_ok=True)
-    path.write_text(content)
     return {"ok": True}
 
 
 # ── Prompts ─────────────────────────────────────────────────────────────────
 
 def list_prompts() -> list[str]:
-    if not PROMPT_DIR.exists():
-        return []
-    return sorted(p.stem for p in PROMPT_DIR.glob("*.md"))
+    return storage.list_document_stems("PROMPT")
 
 
 def get_prompt(name: str) -> dict:
-    path = (PROMPT_DIR / f"{name}.md").resolve()
-    if not path.is_relative_to(PROMPT_DIR) or not path.exists():
+    content = storage.read_document(f"PROMPT/{name}.md")
+    if content is None:
         return {"error": "not found"}
-    return {"name": name, "content": path.read_text()}
+    return {"name": name, "content": content}
 
 
 def save_prompt(name: str, content: str) -> dict:
-    path = (PROMPT_DIR / f"{name}.md").resolve()
-    if not path.is_relative_to(PROMPT_DIR):
+    try:
+        storage.write_document(f"PROMPT/{name}.md", content)
+    except ValueError:
         return {"error": "forbidden"}
-    PROMPT_DIR.mkdir(parents=True, exist_ok=True)
-    path.write_text(content)
     return {"ok": True}
 
 
