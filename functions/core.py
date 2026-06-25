@@ -10,7 +10,14 @@ import sys
 import tomllib
 from pathlib import Path
 
-from python_header import get  # noqa: F401 — loads config.conf/.env
+from python_header import (  # noqa: F401 — loads config.conf/.env
+    get,
+    openai_v1_client,
+    openai_v1_first_provider,
+    openai_v1_models,
+    openai_v1_provider_for_model,
+    openai_v1_providers,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TOML_CONFIG = BASE_DIR / "config" / "mastermind_config.toml"
@@ -18,7 +25,7 @@ PID_FILE = BASE_DIR / "supervisor_loop.pid"
 RUN_FILE = BASE_DIR / "supervisor_loop.run"
 MEMBERS_AI = BASE_DIR / "members_ai"
 PROMPT_DIR = BASE_DIR / "PROMPT"
-DEFAULT_LLM_ENV_KEY = "NAPOLEON_LITELLM_DEFAULT_LLM"
+DEFAULT_LLM_ENV_KEY = "NAPOLEON_OPENAI_V1_DEFAULT_LLM"
 
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -59,34 +66,29 @@ def get_default_model() -> str:
     return _clean(os.environ.get(DEFAULT_LLM_ENV_KEY))
 
 
-def openai_api_base() -> str:
-    raw_url = _clean(os.environ.get("LITELLM_URL")).rstrip("/")
-    raw_port = _clean(os.environ.get("LITELLM_PORT"))
-    if raw_url:
-        if raw_url.endswith("/v1"):
-            raw_url = raw_url[:-3].rstrip("/")
-        if raw_port:
-            raw_url = f"{raw_url}:{raw_port}"
-        return f"{raw_url}/v1".rstrip("/")
-    return ""
+def openai_api_base(model: str = "") -> str:
+    provider = openai_v1_provider_for_model(model) if model else openai_v1_first_provider()
+    return provider.base_url if provider else ""
 
 
-def openai_api_key() -> str:
-    return _clean(os.environ.get("LITELLM_API_KEY"))
+def openai_api_key(model: str = "") -> str:
+    provider = openai_v1_provider_for_model(model) if model else openai_v1_first_provider()
+    return provider.api_key if provider else ""
 
 
-def openai_client(api_base: str, api_key: str = "", timeout: float = 10.0):
-    try:
-        from openai import OpenAI
-    except ImportError as exc:
-        raise RuntimeError("Python package 'openai' is required for proxy calls.") from exc
-    return OpenAI(api_key=api_key or "not-needed", base_url=api_base, timeout=timeout)
+def openai_client(api_base: str = "", api_key: str = "", timeout: float = 10.0, model: str = ""):
+    provider = openai_v1_provider_for_model(model) if model else openai_v1_first_provider()
+    return openai_v1_client(provider, timeout=timeout)
 
 
 def proxy_model_ids(api_base: str, api_key: str = "", timeout: float = 10.0) -> list[str]:
-    client = openai_client(api_base, api_key, timeout=timeout)
-    response = client.models.list()
-    return sorted({m.id for m in response.data if getattr(m, "id", "")})
+    models: list[str] = []
+    for provider in openai_v1_providers():
+        try:
+            models.extend(openai_v1_models(provider, timeout=timeout))
+        except Exception:
+            continue
+    return sorted(set(models))
 
 
 def get_config() -> dict:

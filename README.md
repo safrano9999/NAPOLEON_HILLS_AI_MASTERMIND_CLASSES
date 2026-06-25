@@ -24,14 +24,14 @@ cp config.conf_example config.conf
 Secrets belong in `.env`.
 Non-secret runtime and compose settings belong in `config.conf`.
 
-The LLM backend is always an OpenAI-compatible LiteLLM proxy:
+The LLM backend is always an OpenAI-compatible v1 endpoint:
 
-- `LITELLM_URL`
-- `LITELLM_PORT`
-- `LITELLM_API_KEY`
-- `NAPOLEON_LITELLM_DEFAULT_LLM`
+- `OPENAI_V1_URL`
+- `OPENAI_V1_PORT`
+- `OPENAI_V1_KEY`
+- `NAPOLEON_OPENAI_V1_DEFAULT_LLM`
 
-Direct LiteLLM SDK mode is intentionally not used.
+Provider SDK-specific modes are intentionally not used.
 
 ## Run
 

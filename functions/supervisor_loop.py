@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 Napoleon Hill's AI Mastermind - Supervisor Loop
-Rotates through AI members and calls the configured LiteLLM proxy for each matching speaker in sessions.
+Rotates through AI members and calls the configured OpenAI v1 endpoint for each matching speaker in sessions.
 Reads configuration from config/mastermind_config.toml, config.conf, and .env.
 """
 
-from python_header import get  # noqa: F401 — loads .env
+from python_header import get, openai_v1_client, openai_v1_provider_for_model  # noqa: F401 — loads .env
 
 import os
 import sys
@@ -28,7 +28,7 @@ RULES_FILE    = BASE_DIR / "rules.md"
 TOML_CONFIG   = BASE_DIR / "config" / "mastermind_config.toml"
 RUN_FILE      = BASE_DIR / "supervisor_loop.run"
 PROMPT_DIR    = BASE_DIR / "PROMPT"
-DEFAULT_LLM_ENV_KEY = "NAPOLEON_LITELLM_DEFAULT_LLM"
+DEFAULT_LLM_ENV_KEY = "NAPOLEON_OPENAI_V1_DEFAULT_LLM"
 
 
 # ── Config loading ───────────────────────────────────────────────────────────
@@ -274,43 +274,30 @@ def use_openai_compatible_api() -> bool:
 
 
 def openai_api_base() -> str:
-    litellm_url = _clean(os.environ.get("LITELLM_URL")).rstrip("/")
-    litellm_port = _clean(os.environ.get("LITELLM_PORT"))
-    if litellm_url:
-        if litellm_url.endswith("/v1"):
-            litellm_url = litellm_url[:-3].rstrip("/")
-        if litellm_port:
-            litellm_url = f"{litellm_url}:{litellm_port}"
-        return f"{litellm_url}/v1".rstrip("/")
-    return ""
+    provider = openai_v1_provider_for_model("")
+    return provider.base_url if provider else ""
 
 
 def openai_api_key() -> str:
-    return _clean(os.environ.get("LITELLM_API_KEY"))
+    provider = openai_v1_provider_for_model("")
+    return provider.api_key if provider else ""
 
 
-def openai_client(timeout: float = 120.0):
-    api_base = openai_api_base()
-    if not api_base:
-        raise RuntimeError("LiteLLM proxy URL is empty")
-    try:
-        from openai import OpenAI
-    except ImportError as exc:
-        raise RuntimeError("Python package 'openai' is required for proxy calls.") from exc
-    return OpenAI(
-        api_key=openai_api_key() or "not-needed",
-        base_url=api_base,
-        timeout=timeout,
-    )
+def openai_client(model: str = "", timeout: float = 120.0):
+    provider = openai_v1_provider_for_model(model)
+    if not provider:
+        raise RuntimeError("OPENAI_V1_URL is empty")
+    return openai_v1_client(provider, timeout=timeout)
 
 
 def call_openai_compatible(model: str, prompt: str) -> str:
-    api_base = openai_api_base()
+    provider = openai_v1_provider_for_model(model)
+    api_base = provider.base_url if provider else ""
     if not api_base:
-        raise RuntimeError("LiteLLM proxy URL is empty")
+        raise RuntimeError("OPENAI_V1_URL is empty")
 
     try:
-        response = openai_client(timeout=120.0).chat.completions.create(
+        response = openai_client(model=model, timeout=120.0).chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             stream=False,
@@ -361,7 +348,7 @@ def call_llm(session: dict, speaker_name: str) -> str | None:
     model = persona_model if persona_model else CFG.get("default_model")
 
     if not model:
-        raise RuntimeError("Missing default model. Set NAPOLEON_LITELLM_DEFAULT_LLM in config.conf.")
+        raise RuntimeError("Missing default model. Set NAPOLEON_OPENAI_V1_DEFAULT_LLM in config.conf.")
 
     if persona_model:
         print(f"  [DEBUG] Using persona model: '{model}'")
