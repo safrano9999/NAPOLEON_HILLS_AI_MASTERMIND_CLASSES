@@ -1,13 +1,10 @@
-# FastAPI bind address for direct run and published ports
 #publish-host: FASTAPI_HOST
 #required: FastAPI bind host
 FASTAPI_HOST=127.0.0.1
 
-# Napoleon web UI internal port
 #required: Napoleon internal web UI port
 NAPOLEON_PORT=11004
 
-# Napoleon default OpenAI-v1 model
 #default-preset: gemini/gemini-3.5-flash
 #required: Napoleon default OpenAI-v1 model
 NAPOLEON_OPENAI_V1_DEFAULT_LLM=gemini/gemini-3.5-flash

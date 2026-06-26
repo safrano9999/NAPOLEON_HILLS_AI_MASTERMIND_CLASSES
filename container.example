@@ -1,3 +1,2 @@
-# Napoleon web UI host port
 #required: Napoleon published web UI port
 NAPOLEON_PUBLISH_PORT=11004
