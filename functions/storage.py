@@ -17,7 +17,7 @@ from sqlalchemy import DateTime, String, Text, create_engine, func, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-STATE_DIR = BASE_DIR / "STATE"
+SQLITE_DIR = BASE_DIR / "sqlite"
 
 ALLOWED_FOLDERS = {"config", "members_ai", "members", "members_agents", "sessions", "PROMPT"}
 ALLOWED_ROOT_SUFFIXES = {".md"}
@@ -59,8 +59,8 @@ def database_url() -> str:
     if backend == "blank":
         backend = "sqlite"
     if backend == "sqlite":
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        return f"sqlite:///{STATE_DIR / 'napoleon.sqlite3'}"
+        SQLITE_DIR.mkdir(parents=True, exist_ok=True)
+        return f"sqlite:///{SQLITE_DIR / 'napoleon.sqlite3'}"
 
     host = get("NAPOLEON_DB_HOST")
     port = get("NAPOLEON_DB_PORT")

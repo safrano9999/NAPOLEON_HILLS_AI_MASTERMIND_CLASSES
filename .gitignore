@@ -16,6 +16,7 @@ dist/
 *.sqlite
 *.sqlite3
 STATE/
+sqlite/
 supervisor_loop.run
 supervisor_loop.pid
 .claude/
