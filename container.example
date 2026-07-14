@@ -1,2 +1,2 @@
 #required: Napoleon published web UI port
-NAPOLEON_PUBLISH_PORT=11004
+NAPOLEON_PUBLISH_PORT=11050

@@ -3,7 +3,7 @@
 FASTAPI_HOST=127.0.0.1
 
 #required: Napoleon internal web UI port
-NAPOLEON_PORT=11004
+NAPOLEON_PORT=11050
 
 #default-preset: gemini/gemini-3.5-flash
 #required: Napoleon default OpenAI-v1 model
