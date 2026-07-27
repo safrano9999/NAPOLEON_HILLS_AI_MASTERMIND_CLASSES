@@ -5,6 +5,7 @@ Rotates through AI members and calls the configured OpenAI v1 endpoint for each 
 Reads configuration from config/mastermind_config.toml, config.conf, and .env.
 """
 
+from openai_v1_stream import consume_openai_v1_stream
 from python_header import get, openai_v1_client, openai_v1_provider_for_model  # noqa: F401 — loads .env
 
 import os
@@ -300,15 +301,17 @@ def call_openai_compatible(model: str, prompt: str) -> str:
         response = openai_client(model=model, timeout=120.0).chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
-            stream=False,
+            stream=provider.stream,
         )
     except Exception as exc:
         raise RuntimeError(f"OpenAI-compatible API error from {api_base}/chat/completions: {exc}") from exc
 
+    if provider.stream:
+        return consume_openai_v1_stream(response)
     try:
         content = response.choices[0].message.content
     except (AttributeError, IndexError, TypeError) as exc:
-        raise RuntimeError(f"Unexpected OpenAI-compatible response: {response!r}") from exc
+        raise RuntimeError("Unexpected OpenAI-compatible response shape.") from exc
     if isinstance(content, list):
         content = "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in content)
     return (content or "").strip()
