@@ -10,8 +10,8 @@ import sys
 import tomllib
 from pathlib import Path
 
-from python_header import (  # noqa: F401 — loads config.conf/.env
-    get,
+from python_header import get  # noqa: F401 — loads config.conf/.env
+from openai_v1 import (
     openai_v1_client,
     openai_v1_first_provider,
     openai_v1_models,

@@ -5,8 +5,8 @@ Rotates through AI members and calls the configured OpenAI v1 endpoint for each 
 Reads configuration from config/mastermind_config.toml, config.conf, and .env.
 """
 
-from openai_v1_stream import consume_openai_v1_stream
-from python_header import get, openai_v1_client, openai_v1_provider_for_model  # noqa: F401 — loads .env
+from python_header import get  # noqa: F401 — loads .env
+from openai_v1 import consume_openai_v1_stream, openai_v1_client, openai_v1_provider_for_model
 
 import os
 import sys
