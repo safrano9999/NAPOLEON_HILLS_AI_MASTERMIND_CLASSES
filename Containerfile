@@ -34,7 +34,7 @@ COPY members_ai ./members_ai
 COPY PROMPT ./PROMPT
 COPY sessions ./sessions
 COPY static ./static
-COPY services/*.service /etc/systemd/system/
+COPY image/runtime/etc/systemd/system/*.service /etc/systemd/system/
 
 RUN systemctl enable napoleon.service
 
